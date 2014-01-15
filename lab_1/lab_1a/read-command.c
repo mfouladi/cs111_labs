@@ -177,40 +177,27 @@ int parseFile(int (*get_next_byte) (void *), void *get_next_byte_argument, char*
   //Allocate space in parsedFile
   if(!parsedFile)
   {
-    parsedFile = (char*) checked_malloc(capacity);
-  }
-  else
-  {
-    error(1, 0, "Expected Null parsedFile");
+    error(1, 0, "Unexpected Null parsedFile");
     return 0;
   }
+
   int parenCount = 0;
   char c;
-  while( (c = get_next_byte(get_next_byte_argument)) )
+  int isComment = 0;
+  while( (c = get_next_byte(get_next_byte_argument)) && c != 0 && !feof(get_next_byte_argument))
   {
     // If it is a comment
     // then ignore until new line is reached
     if(c == '#')
     {
-      int endOfFile = 0;
-      while(c != '\n')
-      {
-        c = get_next_byte(get_next_byte_argument);
-        //if end of file is reached
-        //set end of file bit and break
-        if(!c)
-        {
-          endOfFile = 1;
-          break;
-        }
-      }
+      isComment = 1;
+      continue;
+    }
 
-      // if end of file is reached
-      // break from loop
-      if(endOfFile)
-      {
-        break;
-      }
+    if(isComment && c != '\n'){
+      continue;
+    }else if(isComment){
+      isComment = 0;
     }
 
     //Remove Extra New Lines
@@ -263,19 +250,20 @@ int parseFile(int (*get_next_byte) (void *), void *get_next_byte_argument, char*
 
     //Add Valid Character to Array
     parsedFile[size] = c;
+    printf("size = %d char = %c\n",size, c);
 
     //Increment character count
     size++;
   }
 
   //add end of file
-  if(!(size < (signed int)capacity))
-  {
-    checked_grow_alloc(parsedFile, &capacity);
-  }
+  //if(!(size < (signed int)capacity))
+  //{
+  //  checked_grow_alloc(parsedFile, &capacity);
+  //}
 
   //Add Valid Character to Array
-  parsedFile[size] = c;
+  //parsedFile[size] = c;
 
   if(parenCount > 0)
   {
@@ -312,8 +300,11 @@ command_stream_t make_command_stream (int (*get_next_byte) (void *), void *get_n
 {
 
   // Create a syntax parsed array of characters and get it size
-  char* parsedFile = NULL;
+  unsigned int capacity = 256;
+  char* parsedFile = parsedFile = (char*) checked_malloc(capacity);
   int size = parseFile(get_next_byte, get_next_byte_argument, parsedFile);
+  
+  printf("size = %d\n%s", size, parsedFile);
   if(!parsedFile)
   {
     error (1, 0, "parsed file is null");
