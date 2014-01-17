@@ -481,7 +481,7 @@ int parseFile(int (*get_next_byte) (void *), void *get_next_byte_argument, char*
     // Add space before any special characters
     if(size > 0)
     {
-      if(c == ')' || c == ';' || c == '(' || '\n')
+      if(c == ')' || c == ';' || c == '(' || c == '\n' || c == '>' || c == '<' )
       {
         if(parsedFile[size-1] != ' ')
         {
@@ -559,7 +559,7 @@ int createCommandTree(char* parsedFile, int size, command_t* commands)
 
   int capacity = 256;
   int numCommands = 1;
-/*
+
   //variables used to traverse through words in simple command
   int wordCount = -1;
   int letterCount = 0;
@@ -572,7 +572,7 @@ int createCommandTree(char* parsedFile, int size, command_t* commands)
   int i = 0;
   for(i=0; i < size; i++)
   {
-    printf("iteration#%d\t",i);
+    //printf("iteration#%d\t",i);
     if(numCommands >= capacity)
     {
       size_t current_capacity = sizeof(command_t)*capacity;
@@ -596,17 +596,19 @@ int createCommandTree(char* parsedFile, int size, command_t* commands)
       commands[numCommands] = temp;
       numCommands++;
       wordCount = -1;
-      letterCount = 0;
       wordCapacity = 0;
-      letterCapacity = 0;
       isOutput = 0;
       isInput = 0;
+      //skip next &
+      i++;
     }
     else if(c == '|')
     {
       if(parsedFile[i+1] == '|')
       {
         temp->type = OR_COMMAND;
+        //skip next |
+        i++;
       }
       else
       {
@@ -615,9 +617,7 @@ int createCommandTree(char* parsedFile, int size, command_t* commands)
       commands[numCommands] = temp;
       numCommands++;
       wordCount = -1;
-      letterCount = 0;
       wordCapacity = 0;
-      letterCapacity = 0;
       isOutput = 0;
       isInput = 0;
     }
@@ -627,9 +627,7 @@ int createCommandTree(char* parsedFile, int size, command_t* commands)
       commands[numCommands] = temp;
       numCommands++;
       wordCount = -1;
-      letterCount = 0;
       wordCapacity = 0;
-      letterCapacity = 0;
       isOutput = 0;
       isInput = 0;
     }
@@ -639,9 +637,7 @@ int createCommandTree(char* parsedFile, int size, command_t* commands)
       commands[numCommands] = temp;
       numCommands++;
       wordCount = -1;
-      letterCount = 0;
       wordCapacity = 0;
-      letterCapacity = 0;
       isOutput = 0;
       isInput = 0;
     }
@@ -652,9 +648,7 @@ int createCommandTree(char* parsedFile, int size, command_t* commands)
       commands[numCommands] = commands[0]; 
       numCommands++;
       wordCount = -1;
-      letterCount = 0;
       wordCapacity = 0;
-      letterCapacity = 0;
       isOutput = 0;
       isInput = 0;
     }
@@ -665,26 +659,28 @@ int createCommandTree(char* parsedFile, int size, command_t* commands)
       {
         isOutput = 0;
         isInput = 0;
+        parsedFile[i] = 0;
       }
       else if(wordCount > -1)
       {
+        parsedFile[i] = 0;
         wordCount++;
-        if(wordCount >= (int)(wordCapacity-1))
+        if((i+1)<size)
         {
-          size_t wordCapNew = wordCapacity*sizeof(char*);
-          checked_grow_alloc(commands[numCommands-1]->u.word, &wordCapNew);
-          wordCapacity = wordCapNew/sizeof(char*);
+          if( parsedFile[i+1] != '&' && parsedFile[i+1] != '|' && parsedFile[i+1] != ';' &&
+              parsedFile[i+1] != '(' && parsedFile[i+1] != ')' && !isspace(parsedFile[i+1]))
+          {
+            if(wordCount >= (int)(wordCapacity-1))
+            {
+              size_t wordCapNew = wordCapacity*sizeof(char*);
+              checked_grow_alloc(commands[numCommands-1]->u.word, &wordCapNew);
+              wordCapacity = wordCapNew/sizeof(char*);
+            }
+            commands[numCommands-1]->u.word[wordCount] == &parsedFile[i];
+            commands[numCommands-1]->u.word[wordCount+1] == NULL;
+          }
         }
-
-        printf("\tword count increased to %d\n",wordCount);
-
-        commands[numCommands-1]->u.word[wordCount] = (char*)checked_malloc(sizeof(char)*2);
-        commands[numCommands-1]->u.word[wordCount][1] = 0;
-        commands[numCommands-1]->u.word[wordCapacity+1]=NULL;
       }
-      letterCapacity = 2;
-      letterCount = 0;
-      continue;
     }
     else if (c == '\n')
     {
@@ -692,62 +688,54 @@ int createCommandTree(char* parsedFile, int size, command_t* commands)
       commands[numCommands] = NULL;
       numCommands++;
       wordCount = -1;
-      letterCount = 0;
       wordCapacity = 0;
-      letterCapacity = 0;
       isOutput = 0;
       isInput = 0;
     }
     else
     {
-      if(c == '>' || isOutput)
+      if(c == '>')
       {
         free(temp);
         isOutput = 1;
+        i++;
+        while(i < size && isspace(parsedFile[i]))
+        {
+          i++;
+        }
+        commands[numCommands-1]->output = &parsedFile[i];
       }
-      else if(c == '<' || isInput)
+      else if(c == '<')
       {
-        isInput = 1;
         free(temp);
+        isInput = 1;
+        i++;
+        while(i < size && isspace(parsedFile[i]))
+        {
+          i++;
+        }
+        commands[numCommands-1]->input = &parsedFile[i];
       }
       else
       {
-        if(wordCount == -1)
+        if(wordCount == -1 && !isOutput && !isInput)
         {
-          wordCount++;
-          temp->type = SIMPLE_COMMAND;
           //initialize word
+          temp->type = SIMPLE_COMMAND;
           temp->u.word = (char**)checked_malloc(sizeof(char*)*2);
-          temp->u.word[0] = (char*)checked_malloc(sizeof(char)*2);
-          temp->u.word[0][1] = 0;
           temp->u.word[1] = NULL;
-
-          //initialize input and output
-          temp->input  = (char*)checked_malloc(sizeof(char));
-          temp->output = (char*)checked_malloc(sizeof(char));
-
-          letterCapacity = 2;
-          wordCapacity = 2;
-
-          //add to list
+          temp->u.word[0] = &parsedFile[i];
           commands[numCommands] = temp;
           numCommands++;
+          wordCount = 0;
         }
         else
         {
           free(temp);
         }
-        if(letterCount >= (int)(letterCapacity-1))
-        {
-          checked_grow_alloc(commands[numCommands-1]->u.word[wordCount], &letterCapacity);
-        }
-        printf("\tcharacter = %c\n",c);
-        commands[numCommands-1]->u.word[wordCount][letterCount] = c;
-        commands[numCommands-1]->u.word[wordCount][letterCount+1] = 0;
-        letterCount++;
       }
     }
-  }*/
+  }
   return numCommands;
 }
 
@@ -787,8 +775,32 @@ command_stream_t make_command_stream (int (*get_next_byte) (void *), void *get_n
   {
     error (1, 0, "initial command tree is null");
   }
-  //printf("number of commands = %d", numCommands);
-
+  /*
+  printf("number of commands = %d\n\n", numCommands);
+  int i =0;
+  for(i=1; i<numCommands; i++){
+    if(initCommandTree[i] == NULL){
+      printf("\n");
+    }else if(initCommandTree[i] == initCommandTree[0]){
+      printf(" ) ");
+    }
+    else{
+      enum command_type type = initCommandTree[i]->type;
+      if(type == AND_COMMAND){
+        printf(" AND ");
+      }else if(type == SEQUENCE_COMMAND){
+        printf(" ; ");
+      }else if(type == OR_COMMAND){
+        printf(" OR ");
+      }else if(type == PIPE_COMMAND){
+        printf(" PIPE ");
+      }else if(type == SIMPLE_COMMAND){
+        printf(" SIMPLE_COMMAND ");
+      }else if(type == PIPE_COMMAND){
+        printf(" ( ");
+      }
+    }
+  }*/
   // Create an array of trees with each tree representing a single command
   command_stream_t commandForest = linkCommands(initCommandTree, size);
   return commandForest;
