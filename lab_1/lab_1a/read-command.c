@@ -296,21 +296,29 @@ int parseFile(int (*get_next_byte) (void *), void *get_next_byte_argument, char*
 
   while( (c = get_next_byte(get_next_byte_argument)) && c != 0 && !feof(get_next_byte_argument))
   {
-    // If it is a comment
-    // then ignore until new line is reached
+    // If the beginning of a comment is reached
+    // set the comment flag to one and continue 
+    // through the loop
     if(c == '#')
     {
       isComment = 1;
       continue;
     }
 
+    // If comment flag is set and the current character is not
+    // a new line, then skip character and continue loop
+    // Otherwise, if it is a new line, unset the comment flag
     if(isComment && c != '\n'){
       continue;
     }else if(isComment){
       isComment = 0;
     }
 
-    //Remove Extra New Lines
+    // If character is a new line, check if it is an 
+    // extra or arbitrary new line. If it is, then
+    // remove it. Otherwise, if its any other arbitrary
+    // white space, also remove it. If not a white space,
+    // then check grammar.
     if(c == '\n')
     {
       int parsePointer = size-1;
@@ -333,7 +341,6 @@ int parseFile(int (*get_next_byte) (void *), void *get_next_byte_argument, char*
         continue;
       }
     }
-    //Remove Extra White Spaces
     else if(isspace(c))
     {
       if(c != ' ')
@@ -345,7 +352,6 @@ int parseFile(int (*get_next_byte) (void *), void *get_next_byte_argument, char*
         continue;
       }
     }
-    //Check Grammar
     else
     {
       if(!isProperGrammar(parsedFile, size, &parenCount, c))
@@ -354,6 +360,10 @@ int parseFile(int (*get_next_byte) (void *), void *get_next_byte_argument, char*
       }
     }
 
+    // If an I/O flag has been set to find
+    // single file name, then check for valid
+    // file name. Otherwise check if current character is
+    // I/O character 
     if(findSingleWord)
     {
       if(foundSingleWord)
@@ -449,8 +459,9 @@ int parseFile(int (*get_next_byte) (void *), void *get_next_byte_argument, char*
       checked_grow_alloc((void*)parsedFile, &capacity);
     }
 
-    //Add Valid Character to Array
-    if(c == ')' || c == '\n')
+    // Remove any extra white space before 
+    // New lines and close parentheses
+    if(c == '>' || c == '\n')
     {
       int parsePointer = size-1;
       while(parsePointer >= 0)
@@ -466,6 +477,32 @@ int parseFile(int (*get_next_byte) (void *), void *get_next_byte_argument, char*
         parsePointer--;
       }
     }
+
+    // Add space before any special characters
+    if(size > 0)
+    {
+      if(c == ')' || c == ';' || c == '(' || '\n')
+      {
+        if(parsedFile[size-1] != ' ')
+        {
+          parsedFile[size] = ' ';
+          size++;
+        }
+      }
+      else if( c == '&' || c == '|')
+      {
+        if(parsedFile[size-1] != ' ' && parsedFile[size-1] != c)
+        {
+          parsedFile[size] = ' ';
+          size++;
+        }
+      }
+      if(!(size < (signed int)capacity))
+      {
+        checked_grow_alloc((void*)parsedFile, &capacity);
+      }
+    }
+    //Add Valid Character to Array
     parsedFile[size] = c;
     printf("size = %d char = %c\n",size, c);
 
@@ -667,31 +704,10 @@ int createCommandTree(char* parsedFile, int size, command_t* commands)
       {
         free(temp);
         isOutput = 1;
-        if(letterCount >= (int)(letterCapacity-1))
-        {
-          checked_grow_alloc(commands[numCommands-1]->output, &letterCapacity);
-        }
-        commands[numCommands-1]->output[letterCount] = c;
-        commands[numCommands-1]->input[letterCount+1] = 0;
-        letterCount++;
       }
       else if(c == '<' || isInput)
       {
-        if(c == '<')
-        {
-          isInput = 1;
-        }
-        else
-        {
-          printf("\n\tletter count = %d && letterCapacity = %d", letterCount, letterCapacity);
-          if(letterCount >= (int)(letterCapacity-1))
-          {
-            checked_grow_alloc(commands[numCommands-1]->input, &letterCapacity);
-          }
-          commands[numCommands-1]->input[letterCount] = c;
-          commands[numCommands-1]->input[letterCount+1] = 0;
-          letterCount++;
-        }
+        isInput = 1;
         free(temp);
       }
       else
