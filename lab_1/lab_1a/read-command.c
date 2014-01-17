@@ -456,7 +456,7 @@ int parseFile(int (*get_next_byte) (void *), void *get_next_byte_argument, char*
 
     if(!(size < (signed int)capacity))
     {
-      checked_grow_alloc((void*)parsedFile, &capacity);
+      parsedFile = (char*)checked_grow_alloc((void*)parsedFile, &capacity);
     }
 
     // Remove any extra white space before 
@@ -499,12 +499,11 @@ int parseFile(int (*get_next_byte) (void *), void *get_next_byte_argument, char*
       }
       if(!(size < (signed int)capacity))
       {
-        checked_grow_alloc((void*)parsedFile, &capacity);
+        parsedFile = (char*)checked_grow_alloc((void*)parsedFile, &capacity);
       }
     }
     //Add Valid Character to Array
     parsedFile[size] = c;
-    //printf("size = %d char = %c\n",(int)size, c);
 
     //Increment character count
     size++;
@@ -519,7 +518,7 @@ int parseFile(int (*get_next_byte) (void *), void *get_next_byte_argument, char*
   //add end of file
   if(!(size < (signed int)capacity))
   {
-    checked_grow_alloc(parsedFile, &capacity);
+    parsedFile = (char*)checked_grow_alloc((void*)parsedFile, &capacity);
   }
 
   //Add Null Character to End of Array
@@ -531,7 +530,7 @@ int parseFile(int (*get_next_byte) (void *), void *get_next_byte_argument, char*
     error (1, 0, "Improper Syntax in File: Unclosed Parentheses");
     return 0;
   }
-  //printf("\ncapacity = %d\n", (int)capacity);
+
   return size;
 }
 
@@ -555,16 +554,12 @@ int createCommandTree(char* parsedFile, int size, command_t* commands)
     return 0;
   }
 
-
-
-  int capacity = 256;
+  //Command Count - First command is close parentheses
   int numCommands = 1;
 
   //variables used to traverse through words in simple command
   int wordCount = -1;
-  int letterCount = 0;
   size_t wordCapacity = 0;
-  size_t letterCapacity = 0;
   int isOutput = 0;
   int isInput = 0;
 
@@ -572,14 +567,6 @@ int createCommandTree(char* parsedFile, int size, command_t* commands)
   int i = 0;
   for(i=0; i < size; i++)
   {
-    //printf("iteration#%d\t",i);
-    if(numCommands >= capacity)
-    {
-      size_t current_capacity = sizeof(command_t)*capacity;
-      checked_grow_alloc((void*)commands, &current_capacity);
-      capacity = current_capacity/sizeof(command_t);
-    }
-
     command_t temp = (command_t)checked_malloc(sizeof(struct command));
     temp->status = -1;
     temp->input = NULL;
@@ -668,16 +655,17 @@ int createCommandTree(char* parsedFile, int size, command_t* commands)
         if((i+1)<size)
         {
           if( parsedFile[i+1] != '&' && parsedFile[i+1] != '|' && parsedFile[i+1] != ';' &&
-              parsedFile[i+1] != '(' && parsedFile[i+1] != ')' && !isspace(parsedFile[i+1]))
+              parsedFile[i+1] != '(' && parsedFile[i+1] != ')' && parsedFile[i+1] != '>' &&
+              parsedFile[i+1] != '<' && !isspace(parsedFile[i+1]))
           {
             if(wordCount >= (int)(wordCapacity-1))
             {
               size_t wordCapNew = wordCapacity*sizeof(char*);
-              checked_grow_alloc(commands[numCommands-1]->u.word, &wordCapNew);
+              commands[numCommands-1]->u.word = (char**)checked_grow_alloc(commands[numCommands-1]->u.word, &wordCapNew);
               wordCapacity = wordCapNew/sizeof(char*);
             }
-            commands[numCommands-1]->u.word[wordCount] == &parsedFile[i];
-            commands[numCommands-1]->u.word[wordCount+1] == NULL;
+            commands[numCommands-1]->u.word[wordCount] = &(parsedFile[i+1]);
+            commands[numCommands-1]->u.word[wordCount+1] = NULL;
           }
         }
       }
@@ -723,11 +711,12 @@ int createCommandTree(char* parsedFile, int size, command_t* commands)
           //initialize word
           temp->type = SIMPLE_COMMAND;
           temp->u.word = (char**)checked_malloc(sizeof(char*)*2);
+          temp->u.word[0] = &(parsedFile[i]);
           temp->u.word[1] = NULL;
-          temp->u.word[0] = &parsedFile[i];
           commands[numCommands] = temp;
           numCommands++;
           wordCount = 0;
+          wordCapacity = 2;
         }
         else
         {
@@ -764,10 +753,8 @@ command_stream_t make_command_stream (int (*get_next_byte) (void *), void *get_n
     error (1, 0, "parsed file is null");
   }
 
-  //printf("size = %d\n%s\n\n", size, parsedFile);
-
   // Create an array of commands from the array of parsed characters
-  command_t *initCommandTree = (command_t*)checked_malloc(capacity*sizeof(command_t));
+  command_t *initCommandTree = (command_t*)checked_malloc(size*sizeof(command_t));
   command_t closeParenPointer = (command_t)checked_malloc(sizeof(struct command));
   initCommandTree[0] = closeParenPointer;
   int numCommands = createCommandTree(parsedFile, size, initCommandTree);
@@ -775,7 +762,7 @@ command_stream_t make_command_stream (int (*get_next_byte) (void *), void *get_n
   {
     error (1, 0, "initial command tree is null");
   }
-  /*
+
   printf("number of commands = %d\n\n", numCommands);
   int i =0;
   for(i=1; i<numCommands; i++){
@@ -795,12 +782,23 @@ command_stream_t make_command_stream (int (*get_next_byte) (void *), void *get_n
       }else if(type == PIPE_COMMAND){
         printf(" PIPE ");
       }else if(type == SIMPLE_COMMAND){
-        printf(" SIMPLE_COMMAND ");
-      }else if(type == PIPE_COMMAND){
+        int j = 0;
+        while(initCommandTree[i]->u.word[j] != NULL){
+          printf(" %s ", initCommandTree[i]->u.word[j]);
+          j++;
+        }
+        if(initCommandTree[i]->input != NULL){
+          printf(" < %s ", initCommandTree[i]->input);
+        }
+        if(initCommandTree[i]->output != NULL){
+          printf(" > %s ", initCommandTree[i]->output);
+        }
+      }else if(type == SUBSHELL_COMMAND){
         printf(" ( ");
       }
     }
-  }*/
+  }
+  printf("finished implementation\n");
   // Create an array of trees with each tree representing a single command
   command_stream_t commandForest = linkCommands(initCommandTree, size);
   return commandForest;
