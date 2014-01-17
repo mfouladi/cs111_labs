@@ -504,7 +504,7 @@ int parseFile(int (*get_next_byte) (void *), void *get_next_byte_argument, char*
     }
     //Add Valid Character to Array
     parsedFile[size] = c;
-    printf("size = %d char = %c\n",size, c);
+    //printf("size = %d char = %c\n",(int)size, c);
 
     //Increment character count
     size++;
@@ -531,7 +531,7 @@ int parseFile(int (*get_next_byte) (void *), void *get_next_byte_argument, char*
     error (1, 0, "Improper Syntax in File: Unclosed Parentheses");
     return 0;
   }
-  printf("\ncapacity = %d\n", capacity);
+  //printf("\ncapacity = %d\n", (int)capacity);
   return size;
 }
 
@@ -776,7 +776,7 @@ command_stream_t make_command_stream (int (*get_next_byte) (void *), void *get_n
     error (1, 0, "parsed file is null");
   }
 
-  printf("size = %d\n%s\n\n", size, parsedFile);
+  //printf("size = %d\n%s\n\n", size, parsedFile);
 
   // Create an array of commands from the array of parsed characters
   command_t *initCommandTree = (command_t*)checked_malloc(capacity*sizeof(command_t));
