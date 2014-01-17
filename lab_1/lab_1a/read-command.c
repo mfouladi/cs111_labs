@@ -271,7 +271,7 @@ int isProperGrammar(char* parsedFile, int initSize, int* parenCount, char nextIn
 int parseFile(int (*get_next_byte) (void *), void *get_next_byte_argument, char* parsedFile)
 {
   int size = 0;
-  unsigned int capacity = 256;
+  size_t capacity = 256;
 
   //Allocate space in parsedFile
   if(!parsedFile)
@@ -563,8 +563,8 @@ int createCommandTree(char* parsedFile, int size, command_t* commands)
   //variables used to traverse through words in simple command
   int wordCount = -1;
   int letterCount = 0;
-  unsigned int wordCapacity = 0;
-  unsigned int letterCapacity = 0;
+  size_t wordCapacity = 0;
+  size_t letterCapacity = 0;
   int isOutput = 0;
   int isInput = 0;
 
@@ -575,7 +575,7 @@ int createCommandTree(char* parsedFile, int size, command_t* commands)
     printf("iteration#%d\t",i);
     if(numCommands >= capacity)
     {
-      unsigned int current_capacity = sizeof(command_t)*capacity;
+      size_t current_capacity = sizeof(command_t)*capacity;
       checked_grow_alloc((void*)commands, &current_capacity);
       capacity = current_capacity/sizeof(command_t);
     }
@@ -671,7 +671,7 @@ int createCommandTree(char* parsedFile, int size, command_t* commands)
         wordCount++;
         if(wordCount >= (int)(wordCapacity-1))
         {
-          unsigned int wordCapNew = wordCapacity*sizeof(char*);
+          size_t wordCapNew = wordCapacity*sizeof(char*);
           checked_grow_alloc(commands[numCommands-1]->u.word, &wordCapNew);
           wordCapacity = wordCapNew/sizeof(char*);
         }
@@ -767,7 +767,7 @@ command_stream_t make_command_stream (int (*get_next_byte) (void *), void *get_n
 {
 
   // Create a syntax parsed array of characters and get it size
-  unsigned int capacity = 256;
+  size_t capacity = 256;
   char* parsedFile = (char*) checked_malloc(capacity);
   int size = parseFile(get_next_byte, get_next_byte_argument, parsedFile);
   
