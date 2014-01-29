@@ -15,9 +15,9 @@
 /* FIXME: Define the type 'struct command_stream' here.  This should
    complete the incomplete type declaration in command.h.  */
 
-struct command_stream{
+struct command_stream {
   command_t* commands;
-  command_t** cst_it;
+  command_t* cst_it;
   int size;
 };
 
@@ -736,7 +736,91 @@ int createCommandTree(char* parsedFile, int size, command_t* commands)
  */
 command_stream_t linkCommands(command_t* commands, int numCommands)
 {
-  command_stream_t commandForest = NULL;
+  command_stream_t commandForest = (command_stream_t) checked_malloc (sizeof(struct command_stream));
+  commandForest->commands = (command_t*) checked_malloc (numCommands*sizeof(command_stream_t));
+  commandForest->cst_it = commandForest->commands;
+  commandForest->size = 0;
+
+  command_t operatorStack[numCommands];
+  int operators = 0;
+
+  command_t operandStack[numCommands];
+  int operands = 0;
+
+  command_t closedParan = commands[0];
+  
+  int i;
+  for (i=1; i<numCommands; i++)
+    {
+      if (commands[i] == closedParan)
+	{
+	  while (1)
+	    {
+	      command_t op = operatorStack[--operators];
+	      if (op->type == SUBSHELL_COMMAND)
+		{
+		  op->u.subshell_command = operandStack[operands-1];
+		  operandStack[operands-1] = op;
+		  break;
+		}
+	      else
+		{
+		  op->u.command[1] = operandStack[--operands];
+		  op->u.command[0] = operandStack[--operands];
+		  operandStack[operands++] = op;
+		}
+	    }
+	}
+      else if (commands[i] == NULL) 
+	{
+	  while (operators > 0)
+	    {
+	      command_t op = operatorStack[--operators];
+	      op->u.command[1] = operandStack[--operands];
+	      op->u.command[0] = operandStack[--operands];
+	      operandStack[operands++] = op;
+	    }	  
+	  if (operands != 1) printf("Linking algorithm error!");
+	  commandForest->commands[commandForest->size++] = operandStack[--operands];
+	}
+      else
+	{
+	  switch (commands[i]->type)
+	    {
+	    case SIMPLE_COMMAND:
+	      operandStack[operands++] = commands[i];
+	      break;
+	    case AND_COMMAND:
+	    case SEQUENCE_COMMAND:
+	    case OR_COMMAND:
+	      if (operators > 0 && operatorStack[operators-1]->type != SUBSHELL_COMMAND)
+		{
+		  command_t op = operatorStack[--operators];
+		  op->u.command[1] = operandStack[--operands];
+		  op->u.command[0] = operandStack[--operands];
+		  operandStack[operands++] = op;
+		}
+	      operatorStack[operators++] = commands[i];
+	      break;
+	    case PIPE_COMMAND:
+	      if (operators > 0 && operatorStack[operators-1]->type == PIPE_COMMAND)
+		{
+		  command_t op = operatorStack[--operators];
+		  op->u.command[1] = operandStack[--operands];
+		  op->u.command[0] = operandStack[--operands];
+		  operandStack[operands++] = op;
+		}
+	      operatorStack[operators++] = commands[i];
+	      break;
+	    case SUBSHELL_COMMAND:
+	      operatorStack[operators++] = commands[i];
+	      break;
+	    default:
+	      printf("Error: linkCommands could not read from initCommandTree");
+	    }
+	}
+    }
+
   return commandForest;
 }
 
@@ -806,7 +890,7 @@ command_stream_t make_command_stream (int (*get_next_byte) (void *), void *get_n
 
 command_t read_command_stream (command_stream_t s)
 {
-  /* FIXME: Replace this with your implementation too.  */
-  error (1, 0, "command reading not yet implemented");
-  return 0;
+  if (s->cst_it - s->commands >= s->size)
+    return 0;
+  return *(s->cst_it++);
 }
