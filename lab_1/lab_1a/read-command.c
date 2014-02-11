@@ -748,10 +748,13 @@ command_stream_t linkCommands(command_t* commands, int numCommands)
   int operands = 0;
 
   command_t closedParan = commands[0];
+
+  //printf("%i\n", numCommands);
   
   int i;
   for (i=1; i<numCommands; i++)
     {
+      // This command points to the closed parenthesis
       if (commands[i] == closedParan)
 	{
 	  while (1)
@@ -771,6 +774,7 @@ command_stream_t linkCommands(command_t* commands, int numCommands)
 		}
 	    }
 	}
+      // This is the end of commands for this tree
       else if (commands[i] == NULL) 
 	{
 	  while (operators > 0)
@@ -779,10 +783,11 @@ command_stream_t linkCommands(command_t* commands, int numCommands)
 	      op->u.command[1] = operandStack[--operands];
 	      op->u.command[0] = operandStack[--operands];
 	      operandStack[operands++] = op;
-	    }	  
-	  if (operands != 1) printf("Linking algorithm error!");
+	    }
+	  if (operands != 1) printf("Linking algorithm error!\n");
 	  commandForest->commands[commandForest->size++] = operandStack[--operands];
 	}
+      // This command points to an actual command
       else
 	{
 	  switch (commands[i]->type)
@@ -884,7 +889,7 @@ command_stream_t make_command_stream (int (*get_next_byte) (void *), void *get_n
   }
   printf("finished implementation\n");
   // Create an array of trees with each tree representing a single command
-  command_stream_t commandForest = linkCommands(initCommandTree, size);
+  command_stream_t commandForest = linkCommands(initCommandTree, numCommands);
   return commandForest;
 }
 
