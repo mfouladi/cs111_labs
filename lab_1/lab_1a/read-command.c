@@ -851,43 +851,6 @@ command_stream_t make_command_stream (int (*get_next_byte) (void *), void *get_n
   {
     error (1, 0, "initial command tree is null");
   }
-
-  printf("number of commands = %d\n\n", numCommands);
-  int i =0;
-  for(i=1; i<numCommands; i++){
-    if(initCommandTree[i] == NULL){
-      printf("\n");
-    }else if(initCommandTree[i] == initCommandTree[0]){
-      printf(" ) ");
-    }
-    else{
-      enum command_type type = initCommandTree[i]->type;
-      if(type == AND_COMMAND){
-        printf(" AND ");
-      }else if(type == SEQUENCE_COMMAND){
-        printf(" ; ");
-      }else if(type == OR_COMMAND){
-        printf(" OR ");
-      }else if(type == PIPE_COMMAND){
-        printf(" PIPE ");
-      }else if(type == SIMPLE_COMMAND){
-        int j = 0;
-        while(initCommandTree[i]->u.word[j] != NULL){
-          printf(" %s ", initCommandTree[i]->u.word[j]);
-          j++;
-        }
-        if(initCommandTree[i]->input != NULL){
-          printf(" < %s ", initCommandTree[i]->input);
-        }
-        if(initCommandTree[i]->output != NULL){
-          printf(" > %s ", initCommandTree[i]->output);
-        }
-      }else if(type == SUBSHELL_COMMAND){
-        printf(" ( ");
-      }
-    }
-  }
-  printf("finished implementation\n");
   // Create an array of trees with each tree representing a single command
   command_stream_t commandForest = linkCommands(initCommandTree, numCommands);
   return commandForest;
