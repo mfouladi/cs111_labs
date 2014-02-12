@@ -9,26 +9,6 @@
 
 #include <error.h>
 
-/* FIXME: You may need to add #include directives, macro definitions,
-   static function definitions, etc.  */
-
-/* FIXME: Define the type 'struct command_stream' here.  This should
-   complete the incomplete type declaration in command.h.  */
-
-struct command_stream {
-  command_t* commands;
-  command_t* cst_it;
-  int size;
-
-  char** io_files;
-  int* file_dependencies;
-  int io_files_size;
-
-  int **requirement_matrix;
-  int *requirement_array;
-  pid_t *pid_array;
-};
-
 /*Helper Functions*/
 
 /*
@@ -42,10 +22,9 @@ int isValidCharacter(char c)
        || c == '/' || c == ':' || c == '@' || c == '^'
        || c == '_' || c == '|' || c == '&' || c == '('
        || c == ')' || c == '<' || c == '>' || c == ';')
-  {
- c   return 1;
-  }
-  return 0;
+    return 1;
+  else
+    return 0;
 }
 
 int checkOpenParen(char* parsedFile, char c, int initSize)

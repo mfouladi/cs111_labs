@@ -23,3 +23,7 @@ void execute_command (command_t, int);
 /* Return the exit status of a command, which must have previously been executed.
    Wait for the command, if it is not already finished.  */
 int command_status (command_t);
+
+void build_dependencies (command_t, command_stream_t, int);
+
+void execute_command_timetravel (command_t, command_stream_t, int);

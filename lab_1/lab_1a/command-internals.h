@@ -1,5 +1,7 @@
 // UCLA CS 111 Lab 1 command internals
 
+#include <sys/types.h>
+
 enum command_type
   {
     AND_COMMAND,         // A && B
@@ -9,6 +11,19 @@ enum command_type
     SIMPLE_COMMAND,      // a simple command
     SUBSHELL_COMMAND,    // ( A )
   };
+
+struct command_stream 
+{
+  command_t* commands;
+  command_t* cst_it;
+  int size;
+  char** io_files;
+  int* file_dependencies;
+  int io_files_size;
+  int **requirement_matrix;
+  int *requirement_array;
+  pid_t *pid_array;
+};                                                                             
 
 // Data associated with a command.
 struct command

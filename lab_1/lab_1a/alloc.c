@@ -23,7 +23,7 @@ check_nonnull (void *p)
 void *
 checked_calloc (size_t size)
 {
-  return check_nonnull (calloc (size ? size : 1));
+  return check_nonnull (calloc (1, size ? size : 1));
 }
 
 void *

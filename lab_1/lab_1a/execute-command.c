@@ -94,7 +94,7 @@ execute_command_timetravel (command_t c, command_stream_t s, int i)
       pid_t cmd_pid = fork();
       if (cmd_pid == 0)
 	{
-	  execute_command(c);
+	  execute_command(c,0);
 	}
       else if (cmd_pid > 0)
 	{
@@ -108,7 +108,7 @@ execute_command_timetravel (command_t c, command_stream_t s, int i)
 	{
 	  if (s->requirement_matrix[i] != 0)
 	    {
-	      waitpid
+	      // waitpid
 	    }
 	}
     }
@@ -122,10 +122,10 @@ execute_command (command_t c, int timetravel)
       enum command_type type = c->type;
       if(type == AND_COMMAND){
 	command_t left_command = c->u.command[0];
-	execute_command(left_command);
+	execute_command(left_command, 0);
 	if(command_status(left_command) == 0){
 	  command_t right_command = c->u.command[1];
-	  execute_command(right_command);
+	  execute_command(right_command, 0);
 	}
       }else if(type == SEQUENCE_COMMAND){
 	command_t left_command = c->u.command[0];
@@ -143,44 +143,19 @@ execute_command (command_t c, int timetravel)
 	int pipe_arg[2];
 	pipe(pipe_arg);
 	
-	pid_t pid = fork();
-	if (pid == 0)
-	  {
-	    //fprintf(stderr, "child\n");
-	    close(pipe_arg[0]);
-	    dup2(pipe_arg[1], 1);
-	    execute_command(c->u.command[0],0);
-	    close(pipe_arg[1]);
-	    exit(command_status(c->u.command[0]));
-	  }
-	else if (pid > 0)
-	  {
-	    close(pipe_arg[1]);
-	    int pid_status;
-	    waitpid(pid, &pid_status,0);
-	    if (WIFEXITED(pid_status))
-	      c->status =  WEXITSTATUS(pid_status);
-	    else
-	      c->status = 1;
-	    if(command_status(c) == 0)
-	      {
-		int stdin_old = dup(0);
-		dup2(pipe_arg[0], 0);
-		execute_command(c->u.command[1],0);
-		dup2(stdin_old,0);
-	      }
-	    else
-	      {
-		fprintf(stderr, "left command failed\n");
-	      }
-	    close(pipe_arg[0]);
-	    return;
-	  }
-	else 
-	  {
-	    fprintf(stderr, "fork failed!]n");
-	    exit(1);
-	  }
+	int stdout_old = dup(1);
+	dup2(pipe_arg[1], 1);
+	execute_command(c->u.command[0],0);
+	dup2(stdout_old, 1);
+	close(pipe_arg[1]);
+
+	int stdin_old = dup(0);
+	dup2(pipe_arg[0], 0);
+	execute_command(c->u.command[1], 0);
+	dup2(stdin_old, 0);
+	close(pipe_arg[0]);
+
+	return;
 	
       }else if(type == SIMPLE_COMMAND){
 	//fprintf(stderr, "before child\n");

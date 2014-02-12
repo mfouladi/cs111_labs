@@ -6,6 +6,8 @@
 #include <stdio.h>
 
 #include "command.h"
+#include "command-internals.h"
+#include "alloc.h"
 
 static char const *program_name;
 static char const *script_name;
@@ -92,7 +94,7 @@ main (int argc, char **argv)
       else
 	{
 	  last_command = command;
-	  execute_command (command);
+	  execute_command (command, 0);
 	}
     }
 
