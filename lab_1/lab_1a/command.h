@@ -24,6 +24,10 @@ void execute_command (command_t, int);
    Wait for the command, if it is not already finished.  */
 int command_status (command_t);
 
+void make_time_travel_stream (command_stream_t);
+
 void build_dependencies (command_t, command_stream_t, int);
 
 void execute_command_timetravel (command_t, command_stream_t, int);
+
+void finish_timetravel (command_stream_t);

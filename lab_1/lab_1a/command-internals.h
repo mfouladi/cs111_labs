@@ -14,15 +14,20 @@ enum command_type
 
 struct command_stream 
 {
+  // make_command_stream
   command_t* commands;
   command_t* cst_it;
   int size;
+
   char** io_files;
   int* file_dependencies;
   int io_files_size;
+
+  // make_time_travel_stream
   int **requirement_matrix;
   int *requirement_array;
   pid_t *pid_array;
+  int *started;
 };                                                                             
 
 // Data associated with a command.

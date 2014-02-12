@@ -2,6 +2,7 @@
 
 #include "command.h"
 #include "command-internals.h"
+#include "alloc.h"
 
 #include <string.h>
 #include <error.h>
@@ -22,96 +23,6 @@
 int command_status (command_t c)
 {
   return c->status;
-}
-
-void
-build_dependencies (command_t c, command_stream_t s, int index)
-{
-  if (c->type == SUBSHELL_COMMAND || c->type == SIMPLE_COMMAND)
-    {
-      int i;
-      if (c->input != NULL)
-	{
-	  for (i = 0; i < s->io_files_size; i++)
-	    {
-	      // This file is already in the array
-	      if (strcmp(s->io_files[i], c->input) == 0)
-		{
-		  // Mark the requirement matrix
-		  if (s->file_dependencies[i] != index)
-		    s->requirement_matrix[index][s->file_dependencies[i]] = 1;
-		  // Update this file's most recent dependency
-		  s->file_dependencies[i] = index;
-		  break;
-		}
-	    }
-	  // This file is not in the array
-	  if (i == s->io_files_size)
-	    {
-	      // Create an entry in the dependency array
-	      s->io_files[s->io_files_size] = c->input;
-	      s->file_dependencies[s->io_files_size++] = index;
-	    }
-	}
-      if (c->output != NULL)
-	{
-	  for (i=0;i<s->io_files_size;i++)
-	    {
-	      if (strcmp(s->io_files[i],c->output)==0)
-		{
-		  if (s->file_dependencies[i] != index)
-		    s->requirement_matrix[index][s->file_dependencies[i]] = 1;
-		  s->file_dependencies[i] = index;
-		  break;
-		}
-	    }
-	  if (i==s->io_files_size)
-	    {
-	      s->io_files[s->io_files_size] = c->output;
-	      s->file_dependencies[s->io_files_size++] = index;
-	    }
-
-	}
-      if (c->type == SUBSHELL_COMMAND)
-	{
-	  build_dependencies(c->u.subshell_command, s, index); 
-	}
-    }
-  else if (c->type == AND_COMMAND || c->type == SEQUENCE_COMMAND || c->type == OR_COMMAND || c->type == PIPE_COMMAND)
-    {
-      build_dependencies(c->u.command[0], s, index);
-      build_dependencies(c->u.command[1], s, index);
-    }
-
-}
-
-void
-execute_command_timetravel (command_t c, command_stream_t s, int i)
-{
-  
-  if (s->requirement_array[i] == 0)
-    {
-      pid_t cmd_pid = fork();
-      if (cmd_pid == 0)
-	{
-	  execute_command(c,0);
-	}
-      else if (cmd_pid > 0)
-	{
-	  s->pid_array[i] = cmd_pid;
-	}
-    }
-  else
-    {
-      int j;
-      for (j=0; i < s->size; j++)
-	{
-	  if (s->requirement_matrix[i] != 0)
-	    {
-	      // waitpid
-	    }
-	}
-    }
 }
 
 void
@@ -233,12 +144,168 @@ execute_command (command_t c, int timetravel)
 	      c->status =  WEXITSTATUS(pid_status);
 	    else
 	      c->status = 1;
-	    return;
 	  }
 	else 
 	  {
-	    fprintf(stderr, "timetrash: fork failed!]n");
+	    fprintf(stderr, "timetrash: fork failed!\n");
 	  }	
       }
     }
+}
+
+
+void make_time_travel_stream (command_stream_t s)
+{
+  s->requirement_matrix = (int**) checked_malloc (s->size*sizeof(int*));
+  s->requirement_array = (int*) checked_malloc (s->size*sizeof(int));
+  s->pid_array = (pid_t*) checked_malloc (s->size*sizeof(pid_t));
+  s->started = (int*) checked_malloc (s->size*sizeof(int));
+
+  int i, j, sum;
+  for (i=0; i<s->size; i++)
+    {
+      s->requirement_matrix[i] = (int*) checked_calloc (s->size*sizeof(int));
+      
+      build_dependencies(s->commands[i], s, i);
+      
+      sum = 0;
+      for (j=0; j<s->size; j++)
+	{
+	  sum += s->requirement_matrix[i][j];
+	}
+      if (sum > i) fprintf(stderr, "requirement matric error!\n");
+      s->requirement_array[i] = sum;
+    }
+}
+
+void
+build_dependencies (command_t c, command_stream_t s, int index)
+{
+  if (c->type == SUBSHELL_COMMAND || c->type == SIMPLE_COMMAND)
+    {
+      int i;
+      if (c->input != NULL)
+	{
+	  for (i = 0; i < s->io_files_size; i++)
+	    {
+	      // This file is already in the array
+	      if (strcmp(s->io_files[i], c->input) == 0)
+		{
+		  // Mark the requirement matrix
+		  if (s->file_dependencies[i] != index)
+		    s->requirement_matrix[index][s->file_dependencies[i]] = 1;
+		  // Update this file's most recent dependency
+		  s->file_dependencies[i] = index;
+		  break;
+		}
+	    }
+	  // This file is not in the array
+	  if (i == s->io_files_size)
+	    {
+	      // Create an entry in the dependency array
+	      s->io_files[s->io_files_size] = c->input;
+	      s->file_dependencies[s->io_files_size++] = index;
+	    }
+	}
+      if (c->output != NULL)
+	{
+	  for (i=0;i<s->io_files_size;i++)
+	    {
+	      if (strcmp(s->io_files[i],c->output)==0)
+		{
+		  if (s->file_dependencies[i] != index)
+		    s->requirement_matrix[index][s->file_dependencies[i]] = 1;
+		  s->file_dependencies[i] = index;
+		  break;
+		}
+	    }
+	  if (i==s->io_files_size)
+	    {
+	      s->io_files[s->io_files_size] = c->output;
+	      s->file_dependencies[s->io_files_size++] = index;
+	    }
+
+	}
+      if (c->type == SUBSHELL_COMMAND)
+	{
+	  build_dependencies(c->u.subshell_command, s, index); 
+	}
+    }
+  else if (c->type == AND_COMMAND || c->type == SEQUENCE_COMMAND || c->type == OR_COMMAND || c->type == PIPE_COMMAND)
+    {
+      build_dependencies(c->u.command[0], s, index);
+      build_dependencies(c->u.command[1], s, index);
+    }
+
+}
+
+void
+execute_command_timetravel (command_t c, command_stream_t s, int i)
+{
+  if (s->requirement_array[i] != 0)
+    {
+      int j, k;
+      for (j=0; i < s->size; j++)
+	{
+	  if (s->requirement_matrix[i][j] != 0 && s->commands[j]->status == -1)
+	    {
+	      int status;
+	      if (waitpid(s->pid_array[j], &status, WNOHANG | WNOWAIT) > 0)
+		{
+		  if (WIFEXITED(status))
+		    s->commands[j]->status = WEXITSTATUS(status);
+		  else
+		    s->commands[j]->status = 1;
+		  for (k=0; k < s->size; k++)
+		    if (s->requirement_matrix[k][j] == 1)
+		      s->requirement_array[k]--;
+		}
+	    }
+	}
+    }
+
+  if (s->requirement_array[i] == 0)
+    {
+      pid_t cmd_pid = fork();
+      if (cmd_pid == 0)
+	{
+	  execute_command(c,0);
+	}
+      else if (cmd_pid > 0)
+	{
+	  s->pid_array[i] = cmd_pid;
+	  s->started[i] = 1;
+	}
+      else
+	fprintf(stderr, "fork() failed!\n");
+    }
+}
+
+void
+finish_timetravel (command_stream_t s)
+{
+  int blocked = 1; 
+  int i;
+  while (blocked)
+    {
+      blocked = 0;
+      for (i=0; i < s->size; i++)
+	{
+	  if (s->started[i] == 0)
+	    {
+	      blocked = 1;
+	      execute_command_timetravel (s->commands[i], s, i);
+	    }
+	}
+    }
+  for (i=0; i < s->size; i++)
+    {
+      int status;
+      waitpid(s->pid_array[i], &status, 0);
+      if (WIFEXITED(status))
+	s->commands[i]->status = WEXITSTATUS(status);
+      else
+	s->commands[i]->status = 1;
+    }
+  
 }

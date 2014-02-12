@@ -7,7 +7,6 @@
 
 #include "command.h"
 #include "command-internals.h"
-#include "alloc.h"
 
 static char const *program_name;
 static char const *script_name;
@@ -59,24 +58,7 @@ main (int argc, char **argv)
 
   if (time_travel)
     {
-      int commands = command_stream->size;
-      command_stream->requirement_matrix = (int**) checked_malloc (commands*sizeof(int*));
-      command_stream->requirement_array = (int*) checked_malloc (commands*sizeof(int));
-      int i, j, sum;
-      for (i=0;i<commands;i++)
-	{
-	  command_stream->requirement_matrix[i] = (int*) checked_calloc (commands*sizeof(int));
-
-	  build_dependencies(command_stream->commands[i], command_stream, i);
-	  
-	  sum = 0;
-	  for (j=0; j<commands; j++)
-	    {
-	      sum += command_stream->requirement_matrix[i][j];
-	    }
-	  if (sum > i) fprintf(stderr, "requirement matric error!\n");
-	  command_stream->requirement_array[i] = sum;
-	}
+      make_time_travel_stream (command_stream);
     }
   
   int i = 0;
@@ -89,6 +71,7 @@ main (int argc, char **argv)
 	}
       else if (time_travel)
 	{
+	  last_command = command;
 	  execute_command_timetravel (command, command_stream, i++);
 	}
       else
@@ -97,6 +80,9 @@ main (int argc, char **argv)
 	  execute_command (command, 0);
 	}
     }
+
+  if (time_travel)
+    finish_timetravel (command_stream);
 
   return print_tree || !last_command ? 0 : command_status (last_command);
 }
