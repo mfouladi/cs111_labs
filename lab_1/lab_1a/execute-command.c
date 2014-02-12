@@ -123,40 +123,81 @@ execute_command (command_t c, int timetravel)
       if(type == AND_COMMAND){
 	command_t left_command = c->u.command[0];
 	execute_command(left_command, 0);
-	if(command_status(left_command) == 0){
+	c->status = left_command->status;
+	if(c->status == 0){
 	  command_t right_command = c->u.command[1];
 	  execute_command(right_command, 0);
+	  c->status = right_command->status;
 	}
       }else if(type == SEQUENCE_COMMAND){
 	command_t left_command = c->u.command[0];
 	command_t right_command = c->u.command[1];
 	execute_command(left_command,0);
 	execute_command(right_command,0);
+	c->status = right_command->status;
       }else if(type == OR_COMMAND){
 	command_t left_command = c->u.command[0];
 	execute_command(left_command,0);
+	c->status = left_command->status;
 	if(command_status(left_command) > 0){
 	  command_t right_command = c->u.command[1];
 	  execute_command(right_command,0);
+	  c->status = right_command->status;
 	}
       }else if(type == PIPE_COMMAND){
+	command_t left_command = c->u.command[0];
+	command_t right_command = c->u.command[1];
 	int pipe_arg[2];
 	pipe(pipe_arg);
 	
 	int stdout_old = dup(1);
 	dup2(pipe_arg[1], 1);
-	execute_command(c->u.command[0],0);
+	execute_command(left_command, 0);
 	dup2(stdout_old, 1);
 	close(pipe_arg[1]);
 
 	int stdin_old = dup(0);
 	dup2(pipe_arg[0], 0);
-	execute_command(c->u.command[1], 0);
+	execute_command(right_command, 0);
 	dup2(stdin_old, 0);
 	close(pipe_arg[0]);
-
-	return;
+	c->status = right_command->status;
 	
+      }else if(type == SUBSHELL_COMMAND){
+
+	int input_fd, output_fd, stdout_old, stdin_old; 
+	if(c->input != NULL){
+	  stdin_old = dup(0);
+	  input_fd = open(c->input, O_RDONLY);
+	  if(input_fd < 0)
+	    fprintf(stderr, "timetrash: error on input file open\n");
+	  else 
+	    dup2(input_fd, 0);
+	}
+	
+	if(c->output != NULL){
+	  stdout_old = dup(1);
+	  output_fd = open(c->input, O_WRONLY);
+	  if(output_fd < 0)
+	    output_fd = open(c->input, O_CREAT, 777);
+	  if(output_fd < 0)
+	    fprintf(stderr, "timetrash: error on output file open\n");
+	  else
+	    dup2(output_fd, 1);
+	}
+
+	execute_command(c->u.subshell_command,0);
+	
+	if (c->input != NULL) {
+	    dup2 (stdin_old, 0);
+	    close (input_fd);
+	}
+	if (c->output != NULL) {
+	    dup2 (stdout_old, 1);
+	    close (output_fd);
+	}
+	c->status = c->u.subshell_command->status;
+
       }else if(type == SIMPLE_COMMAND){
 	//fprintf(stderr, "before child\n");
 	pid_t pid = fork();
@@ -167,7 +208,7 @@ execute_command (command_t c, int timetravel)
 	    if(c->input != NULL){
 	      input_fd = open(c->input, O_RDONLY);
 	      if(input_fd < 0)
-		fprintf(stderr, "error on input file open\n");
+		fprintf(stderr, "timetrash: error on input file open\n");
 	      dup2(input_fd, 0);
 	    }
 	    //fprintf(stderr, "before output\n");
@@ -176,7 +217,7 @@ execute_command (command_t c, int timetravel)
 	      if(output_fd < 0)
 		output_fd = open(c->output, O_CREAT|O_WRONLY, S_IWUSR|S_IRUSR);
 	      if(output_fd < 0)
-		fprintf(stderr, "error on output file open\n");
+		fprintf(stderr, "timetrash: error on output file open\n");
 	      dup2(output_fd, 1);
 	    }
 	    const char* command_name = c->u.word[0];
@@ -196,43 +237,8 @@ execute_command (command_t c, int timetravel)
 	  }
 	else 
 	  {
-	    fprintf(stderr, "fork failed!]n");
-	    exit(1);
-	  }
-	
-      }else if(type == SUBSHELL_COMMAND){
-	pid_t pid = fork();
-	if (pid == 0)
-	  {
-	    int input_fd, output_fd; 
-	    if(c->input != NULL){
-	      input_fd = open(c->input, O_RDONLY);
-	      dup2(input_fd, 0);
-	    }
-	    if(c->output != NULL){
-	      output_fd = open(c->input, O_WRONLY);
-	      if(output_fd < 0)
-		output_fd = open(c->input, O_CREAT, 777);
-	      dup2(output_fd, 1);
-	    }
-	    execute_command(c->u.subshell_command,0);
-	    exit(c->u.subshell_command->status);
-	  }
-	else if (pid > 0)
-	  {
-	    int pid_status;
-	    waitpid(pid, &pid_status,0);
-	    if (WIFEXITED(pid_status))
-	      c->status =  WEXITSTATUS(pid_status);
-	    else
-	      c->status = 1;
-	    return;
-	  }
-	else 
-	  {
-	    fprintf(stderr, "fork failed!]n");
-	    exit(1);
-	  }
+	    fprintf(stderr, "timetrash: fork failed!]n");
+	  }	
       }
     }
 }
