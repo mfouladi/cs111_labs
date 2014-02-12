@@ -21,6 +21,12 @@ check_nonnull (void *p)
 }
 
 void *
+checked_calloc (size_t size)
+{
+  return check_nonnull (calloc (size ? size : 1));
+}
+
+void *
 checked_malloc (size_t size)
 {
   return check_nonnull (malloc (size ? size : 1));

@@ -19,6 +19,14 @@ struct command_stream {
   command_t* commands;
   command_t* cst_it;
   int size;
+
+  char** io_files;
+  int* file_dependencies;
+  int io_files_size;
+
+  int **requirement_matrix;
+  int *requirement_array;
+  pid_t *pid_array;
 };
 
 /*Helper Functions*/
@@ -35,7 +43,7 @@ int isValidCharacter(char c)
        || c == '_' || c == '|' || c == '&' || c == '('
        || c == ')' || c == '<' || c == '>' || c == ';')
   {
-    return 1;
+ c   return 1;
   }
   return 0;
 }
@@ -741,6 +749,10 @@ command_stream_t linkCommands(command_t* commands, int numCommands)
   commandForest->cst_it = commandForest->commands;
   commandForest->size = 0;
 
+  commandForest->io_files = (char**) checked_malloc(numCommands*sizeof(char*));
+  commandForest->file_dependencies = (int*) checked_malloc(numCommands*sizeof(int));
+  commandForest->io_files_size = 0;
+
   command_t operatorStack[numCommands];
   int operators = 0;
 
@@ -853,6 +865,7 @@ command_stream_t make_command_stream (int (*get_next_byte) (void *), void *get_n
   }
   // Create an array of trees with each tree representing a single command
   command_stream_t commandForest = linkCommands(initCommandTree, numCommands);
+
   return commandForest;
 }
 
