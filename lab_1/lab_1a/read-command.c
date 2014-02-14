@@ -159,7 +159,7 @@ int checkRedirectToken(char* parsedFile, char c, int initSize)
   if(c != '<' && c != '>')
   {
     error(1, 0, "Improper call to checkRedirectToken");
-    return 0;   
+    return 0;
   }
 
   int parsePointer = initSize-1;
