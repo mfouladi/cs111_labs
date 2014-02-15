@@ -34,10 +34,11 @@ int checkOpenParen(char* parsedFile, char c, int initSize)
     error(1, 0, "Improper call to checkOpenParen");
     return 0;
   }
+
   int parsePointer = initSize-1;
   while(parsePointer > 0)
   {
-    if( parsedFile[parsePointer] == c || isspace(parsedFile[parsePointer]))
+    if( parsedFile[parsePointer] == c || (parsedFile[parsePointer] != '\n' && isspace(parsedFile[parsePointer])))
     {
       //do Nothing
     }
