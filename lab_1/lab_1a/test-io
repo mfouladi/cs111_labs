@@ -1,0 +1,2 @@
+( echo hello ) > out.tmp
+echo world | cat > out.tmp

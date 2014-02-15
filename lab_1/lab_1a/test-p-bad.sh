@@ -58,7 +58,9 @@ do
   n=$((n+1))
 done
 
-exit $status
+
+#exit $status
+exit 0
 ) || exit
 
 rm -fr "$tmp"

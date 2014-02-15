@@ -81,8 +81,7 @@ main (int argc, char **argv)
 	}
     }
 
-  if (time_travel)
-    finish_timetravel (command_stream);
+  if (time_travel) finish_timetravel (command_stream);
 
   return print_tree || !last_command ? 0 : command_status (last_command);
 }

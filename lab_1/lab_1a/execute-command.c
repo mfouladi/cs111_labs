@@ -16,10 +16,6 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
-
-/* FIXME: You may need to add #include directives, macro definitions,
-   static function definitions, etc.  */
-
 int command_status (command_t c)
 {
   return c->status;
@@ -81,7 +77,10 @@ execute_command (command_t c, int timetravel)
 	  stdin_old = dup(0);
 	  input_fd = open(c->input, O_RDONLY);
 	  if(input_fd < 0)
-	    fprintf(stderr, "timetrash: error on input file open\n");
+	    {
+	      fprintf(stderr, "-timetrash: couldn't open %s\n", c->input);
+	      c->input = NULL;
+	    }
 	  else 
 	    dup2(input_fd, 0);
 	}
@@ -92,7 +91,10 @@ execute_command (command_t c, int timetravel)
 	  if(output_fd < 0)
 	    output_fd = open(c->input, O_CREAT, 777);
 	  if(output_fd < 0)
-	    fprintf(stderr, "timetrash: error on output file open\n");
+	    {
+	      fprintf(stderr, "execute_command: couldn't open %s\n", c->output);
+	      c->output = NULL;
+	    }
 	  else
 	    dup2(output_fd, 1);
 	}
@@ -119,20 +121,28 @@ execute_command (command_t c, int timetravel)
 	    if(c->input != NULL){
 	      input_fd = open(c->input, O_RDONLY);
 	      if(input_fd < 0)
-		fprintf(stderr, "timetrash: error on input file open\n");
-	      dup2(input_fd, 0);
+		{
+		  fprintf(stderr, "execute_command: couldn't open %s\n", c->input);
+		  c->input = NULL;
+		}
+	      else
+		dup2(input_fd, 0);
 	    }
-	    //fprintf(stderr, "before output\n");
+
 	    if(c->output != NULL){
 	      output_fd = open(c->output, O_WRONLY);
 	      if(output_fd < 0)
 		output_fd = open(c->output, O_CREAT|O_WRONLY, S_IWUSR|S_IRUSR);
 	      if(output_fd < 0)
-		fprintf(stderr, "timetrash: error on output file open\n");
-	      dup2(output_fd, 1);
+		{
+		  fprintf(stderr, "execute_command: couldn't open %s\n", c->output);
+		  c->output = NULL;
+		}
+	      else
+		dup2(output_fd, 1);
 	    }
-	    const char* command_name = c->u.word[0];
-	    execvp(command_name, c->u.word);
+	    execvp(c->u.word[0], c->u.word);
+
 	    // execvp should not return
 	    exit(errno);
 	  }
@@ -140,15 +150,16 @@ execute_command (command_t c, int timetravel)
 	  {
 	    int pid_status;
 	    waitpid(pid, &pid_status,0);
+	    //fprintf(stderr, "child done\n");
 	    if (WIFEXITED(pid_status))
 	      c->status =  WEXITSTATUS(pid_status);
 	    else
 	      c->status = 1;
 	  }
-	else 
+	else
 	  {
-	    fprintf(stderr, "timetrash: fork failed!\n");
-	  }	
+	    fprintf(stderr, "execute_command: fork() failed!\n");
+	  }
       }
     }
 }
@@ -156,31 +167,53 @@ execute_command (command_t c, int timetravel)
 
 void make_time_travel_stream (command_stream_t s)
 {
+  //printf("make_time_travel_stream\n");
   s->requirement_matrix = (int**) checked_malloc (s->size*sizeof(int*));
   s->requirement_array = (int*) checked_malloc (s->size*sizeof(int));
   s->pid_array = (pid_t*) checked_malloc (s->size*sizeof(pid_t));
   s->started = (int*) checked_malloc (s->size*sizeof(int));
 
   int i, j, sum;
-  for (i=0; i<s->size; i++)
+  //printf("cmds: %i\n", s->size);
+  for (i=0; i < s->size; i++)
     {
       s->requirement_matrix[i] = (int*) checked_calloc (s->size*sizeof(int));
-      
+
       build_dependencies(s->commands[i], s, i);
-      
+
       sum = 0;
       for (j=0; j<s->size; j++)
 	{
 	  sum += s->requirement_matrix[i][j];
 	}
+
       if (sum > i) fprintf(stderr, "requirement matric error!\n");
       s->requirement_array[i] = sum;
+
     }
+  /*
+  printf("DEBUG: io_files:\n");
+  for (i=0; i < s->io_files_size; i++)
+    {
+      printf("%s\n", s->io_files[i]);
+    }
+
+  printf("DEBUG: requirement_matrix:\n");
+  for (i=0; i < s->size; i++)
+    {
+      for (j=0; j < s->size; j++)
+	{
+	  printf("%i ", s->requirement_matrix[i][j]);
+	}
+      printf("= %i\n", s->requirement_array[i]);
+    }
+  */
 }
 
 void
 build_dependencies (command_t c, command_stream_t s, int index)
 {
+  //printf("build_dependencies\n");
   if (c->type == SUBSHELL_COMMAND || c->type == SIMPLE_COMMAND)
     {
       int i;
@@ -207,6 +240,7 @@ build_dependencies (command_t c, command_stream_t s, int index)
 	      s->file_dependencies[s->io_files_size++] = index;
 	    }
 	}
+
       if (c->output != NULL)
 	{
 	  for (i=0;i<s->io_files_size;i++)
@@ -236,30 +270,43 @@ build_dependencies (command_t c, command_stream_t s, int index)
       build_dependencies(c->u.command[0], s, index);
       build_dependencies(c->u.command[1], s, index);
     }
-
 }
 
 void
 execute_command_timetravel (command_t c, command_stream_t s, int i)
 {
+  //printf("execute_command_timetravel\n");
   if (s->requirement_array[i] != 0)
     {
-      int j, k;
-      for (j=0; i < s->size; j++)
+      int j;
+      for (j=0; j < i; j++)
 	{
-	  if (s->requirement_matrix[i][j] != 0 && s->commands[j]->status == -1)
+	  if (s->requirement_matrix[i][j] != 0 && s->commands[j]->status == -1 && s->pid_array[j] != 0)
 	    {
 	      int status;
-	      if (waitpid(s->pid_array[j], &status, WNOHANG | WNOWAIT) > 0)
+	      //printf("DEBUG: cmd%i waiting for pid=%i\n", i, s->pid_array[j]);
+	      
+	      int wait = waitpid(s->pid_array[j], &status, WNOHANG);
+	      if (wait == s->pid_array[j])
 		{
+		  //printf("DEBUG: cmd%i unblocked by cmd%i\n", i, j);
 		  if (WIFEXITED(status))
 		    s->commands[j]->status = WEXITSTATUS(status);
 		  else
 		    s->commands[j]->status = 1;
+		  s->pid_array[j] = 0;
+		  
+		  int k;
 		  for (k=0; k < s->size; k++)
 		    if (s->requirement_matrix[k][j] == 1)
 		      s->requirement_array[k]--;
 		}
+	      else if (wait == 0)
+		{
+		  //printf("DEBUG: cmd%i blocked by cmd%i\n", i, j);
+		}
+	      else
+		fprintf(stderr, "execute_command_timetravel: waitpid() failed\n");
 	    }
 	}
     }
@@ -270,20 +317,23 @@ execute_command_timetravel (command_t c, command_stream_t s, int i)
       if (cmd_pid == 0)
 	{
 	  execute_command(c,0);
+	  exit (0);
 	}
       else if (cmd_pid > 0)
 	{
+	  //printf("DEBUG: cmd%i pid=%i\n", i, cmd_pid);
 	  s->pid_array[i] = cmd_pid;
 	  s->started[i] = 1;
 	}
       else
-	fprintf(stderr, "fork() failed!\n");
+	fprintf(stderr, "execute_command_timetravel: fork() failed!\n");
     }
 }
 
 void
 finish_timetravel (command_stream_t s)
 {
+  //printf("finish_timetravel\n");
   int blocked = 1; 
   int i;
   while (blocked)
@@ -297,15 +347,25 @@ finish_timetravel (command_stream_t s)
 	      execute_command_timetravel (s->commands[i], s, i);
 	    }
 	}
+      //sleep(1);
     }
+
   for (i=0; i < s->size; i++)
     {
       int status;
-      waitpid(s->pid_array[i], &status, 0);
-      if (WIFEXITED(status))
-	s->commands[i]->status = WEXITSTATUS(status);
-      else
-	s->commands[i]->status = 1;
+      if (s->pid_array[i] > 0)
+	{
+	  if (waitpid(s->pid_array[i], &status, 0) > 0)
+	    {
+	      if (WIFEXITED(status))
+		s->commands[i]->status = WEXITSTATUS(status);
+	      else
+		s->commands[i]->status = 1;
+	    }
+	  else
+	    {
+	      fprintf(stderr, "finish_timetravel: waitpid() failed!\n");
+	    }
+	}
     }
-  
 }

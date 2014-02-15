@@ -1,0 +1,19 @@
+echo cmd0 start && 
+echo foo > foo1.tmp ; sleep 1 &&
+echo cmd0 end
+
+echo cmd1 start && 
+echo bar > bar1.tmp ; sleep 1 &&
+echo cmd1 end
+
+echo cmd2 start &&
+cat < foo1.tmp > foo2.tmp ; sleep 1 &&
+echo cmd2 end
+
+echo cmd3 start &&
+cat < bar1.tmp > bar2.tmp ; sleep 1 &&
+echo cmd3 end
+
+echo cmd4 start &&
+cat < foo2.tmp ; cat < bar2.tmp &&
+echo cmd4 end
