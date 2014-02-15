@@ -1,0 +1,1 @@
+cat a.txt | cat > b.txt; cat < b.txt
