@@ -695,7 +695,19 @@ int createCommandTree(char* parsedFile, int size, command_t* commands)
         {
           i++;
         }
-        commands[numCommands-1]->output = &parsedFile[i];
+        if(commands[numCommands-1] == commands[0])
+        {
+          int lastCommand;
+          for(lastCommand = numCommands-2; lastCommand>0; lastCommand--){
+            if(commands[lastCommand]->type == SUBSHELL_COMMAND){
+              commands[lastCommand]->output = &parsedFile[i]; 
+            }
+          }
+        }
+        else
+        {
+          commands[numCommands-1]->output = &parsedFile[i]; 
+        }
       }
       else if(c == '<')
       {
@@ -706,7 +718,19 @@ int createCommandTree(char* parsedFile, int size, command_t* commands)
         {
           i++;
         }
-        commands[numCommands-1]->input = &parsedFile[i];
+        if(commands[numCommands-1] == commands[0])
+        {
+          int lastCommand;
+          for(lastCommand = numCommands-2; lastCommand>0; lastCommand--){
+            if(commands[lastCommand]->type == SUBSHELL_COMMAND){
+              commands[lastCommand]->input = &parsedFile[i]; 
+            }
+          }
+        }
+        else
+        {
+          commands[numCommands-1]->input = &parsedFile[i]; 
+        }
       }
       else
       {
