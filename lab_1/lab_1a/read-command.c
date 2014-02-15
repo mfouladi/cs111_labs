@@ -570,9 +570,10 @@ int createCommandTree(char* parsedFile, int size, command_t* commands)
 
   //Iterate over parsed file to create commands
   int i = 0;
+  command_t temp;
   for(i=0; i < size; i++)
   {
-    command_t temp = (command_t)checked_malloc(sizeof(struct command));
+    temp = (command_t)checked_malloc(sizeof(struct command));
     temp->status = -1;
     temp->input = NULL;
     temp->output = NULL;
@@ -675,7 +676,7 @@ int createCommandTree(char* parsedFile, int size, command_t* commands)
         }
       }
     }
-    else if (c == '\n')
+    else if (c == '\n' || c == EOF)
     {
       free(temp);
       commands[numCommands] = NULL;
@@ -753,6 +754,10 @@ int createCommandTree(char* parsedFile, int size, command_t* commands)
         }
       }
     }
+  }
+  if(commands[numCommands-1] != NULL){
+      commands[numCommands] = NULL;
+      numCommands++;
   }
   return numCommands;
 }
