@@ -37,7 +37,7 @@ int checkOpenParen(char* parsedFile, char c, int initSize)
   int parsePointer = initSize-1;
   while(parsePointer > 0)
   {
-    if( parsedFile[parsePointer] == c)
+    if( parsedFile[parsePointer] == c || isspace(parsedFile[parsePointer]))
     {
       //do Nothing
     }
@@ -199,15 +199,31 @@ int isProperGrammar(char* parsedFile, int initSize, int* parenCount, char nextIn
 
   if(initSize == 0)
   {
-    if(nextInput != '&' && nextInput != '|' && nextInput != ';')
+    if(nextInput != '&' && nextInput != '|' && nextInput != ';' && nextInput != '<' && nextInput != '>' )
+    {
+      if(nextInput == '(')
+      {
+        (*parenCount)++;
+      }
+      else if(nextInput == ')')
+      {
+        (*parenCount)--;
+        if( (*parenCount) < 0 )
+        {
+          return 0;
+        }
+      }
       return 1;
-    else
+    }
+    else{
       return 0;
+    }
   }
   // If & or | follows a different special character
   // or there are three of these back to back without
   // intermediate valid characters
   // Then return false
+
   if(nextInput == '&' || nextInput == '|' || nextInput == ';' ||
      nextInput == '(' || nextInput == ')' )
   {
