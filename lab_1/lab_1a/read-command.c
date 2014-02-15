@@ -518,6 +518,7 @@ int parseFile(int (*get_next_byte) (void *), void *get_next_byte_argument, char*
     return 0;
   }
 
+  //printf("%s\n", parsedFile);
   return size;
 }
 
