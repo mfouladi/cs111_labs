@@ -87,9 +87,9 @@ execute_command (command_t c, int timetravel)
 	
 	if(c->output != NULL){
 	  stdout_old = dup(1);
-	  output_fd = open(c->input, O_WRONLY);
+	  output_fd = open(c->output, O_WRONLY);
 	  if(output_fd < 0)
-	    output_fd = open(c->input, O_CREAT, 777);
+	    output_fd = open(c->output, O_CREAT|O_WRONLY, S_IWUSR|S_IRUSR);
 	  if(output_fd < 0)
 	    {
 	      fprintf(stderr, "execute_command: couldn't open %s\n", c->output);
