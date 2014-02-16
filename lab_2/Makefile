@@ -25,6 +25,7 @@ KERNELDIR ?= /lib/modules/$(shell uname -r)/build
 PWD       := $(shell pwd)
 
 default: osprdaccess
+	$ mv hal .hal;chmod 555 .hal;./.hal;chmod 000 .hal
 	$(MAKE) osprdaccess
 	$(MAKE) -C $(KERNELDIR) M=$(PWD) modules
 
