@@ -59,8 +59,8 @@ do
 done
 
 
-#exit $status
-exit 0
+exit $status
+#exit 0
 ) || exit
 
 rm -fr "$tmp"

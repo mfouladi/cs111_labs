@@ -103,8 +103,11 @@ int checkSpecialToken(char* parsedFile, char c, int initSize)
   int parsePointer = initSize-1;
   int spaceFound = 0;
   int closeParenFound = 0;
-  while(parsePointer > 0)
+
+  //printf("DEBUG: checkSpecialToken: initSize=%i\n", initSize);
+  while(parsePointer >= 0)
   {
+    //printf("DEBUG: checkSpecialToken: checking %c\n", parsedFile[parsePointer]);
     if( parsedFile[parsePointer] == c)
     {
       if(c == '|' || c == '&')
@@ -152,6 +155,9 @@ int checkSpecialToken(char* parsedFile, char c, int initSize)
     parsePointer--;
   }
 
+
+  
+  //printf("DEBUG: checkSpecialToken: error 1\n");
   return 0;
 }
 
@@ -193,11 +199,13 @@ int checkRedirectToken(char* parsedFile, char c, int initSize)
  */
 int isProperGrammar(char* parsedFile, int initSize, int* parenCount, char nextInput)
 {
+  if(!isValidCharacter(nextInput))
+    {
+      //printf("DEBUG: grammer error 1\n");
+      return 0;
+    }
   // if its the first character, 
   // then it must be a non-special character
-  if(!isValidCharacter(nextInput))
-    return 0;
-
   if(initSize == 0)
   {
     if(nextInput != '&' && nextInput != '|' && nextInput != ';' && nextInput != '<' && nextInput != '>' )
@@ -211,12 +219,15 @@ int isProperGrammar(char* parsedFile, int initSize, int* parenCount, char nextIn
         (*parenCount)--;
         if( (*parenCount) < 0 )
         {
+	  //printf("DEBUG: grammer error 2\n");
+
           return 0;
         }
       }
       return 1;
     }
     else{
+      //printf("DEBUG: grammer error 3\n");
       return 0;
     }
   }
@@ -230,6 +241,9 @@ int isProperGrammar(char* parsedFile, int initSize, int* parenCount, char nextIn
   {
     if(!checkSpecialToken(parsedFile, nextInput, initSize))
     {
+      //printf("DEBUG: parsedFile at failure = %s\n", parsedFile);
+      //printf("DEBUG: last char = %c\n", nextInput);
+      //printf("DEBUG: grammer error 4\n");
       return 0;
     }
   }
@@ -237,6 +251,7 @@ int isProperGrammar(char* parsedFile, int initSize, int* parenCount, char nextIn
   {
     if(!checkRedirectToken(parsedFile, nextInput, initSize))
     {
+      //printf("DEBUG: grammer error 5\n");
       return 0;
     }
   }
@@ -247,7 +262,10 @@ int isProperGrammar(char* parsedFile, int initSize, int* parenCount, char nextIn
       {
         parsePointer--;
         if(parsePointer < 0 || parsedFile[parsePointer] != '&')
-          return 0;
+	  {
+	    //printf("DEBUG: 6\n");
+	    return 0;
+	  }
       }
   }
 
@@ -260,6 +278,7 @@ int isProperGrammar(char* parsedFile, int initSize, int* parenCount, char nextIn
     (*parenCount)--;
     if( (*parenCount) < 0 )
     {
+      //printf("DEBUG: 7\n");
       return 0;
     }
   }
@@ -300,6 +319,7 @@ int parseFile(int (*get_next_byte) (void *), void *get_next_byte_argument, char*
 
   while( (c = get_next_byte(get_next_byte_argument)) && c != 0 && !feof(get_next_byte_argument))
   {
+    //printf("DEBUG: parseFile: checking %c\n", c);
     // If the beginning of a comment is reached
     // set the comment flag to one and continue 
     // through the loop
@@ -360,7 +380,7 @@ int parseFile(int (*get_next_byte) (void *), void *get_next_byte_argument, char*
     {
       if(!isProperGrammar(parsedFile, size, &parenCount, c))
       {
-        error (1, 0, "Improper Syntax in File");
+        error (1, 0, "Improper Syntax in File: bad grammar");
       }
     }
 
@@ -516,7 +536,7 @@ int parseFile(int (*get_next_byte) (void *), void *get_next_byte_argument, char*
   //Check if file ended properly
   if(parsedFile[size-1] != ';' && parsedFile[size-1]!='\n' && !isProperGrammar(parsedFile, size, &parenCount, ';'))
   {
-    error (1, 0, "Improper Syntax in File");
+    error (1, 0, "Improper Syntax in File: File terminated incorrectly");
   }
 
   //add end of file
@@ -787,9 +807,25 @@ command_stream_t linkCommands(command_t* commands, int numCommands)
 
   command_t closedParan = commands[0];
 
+  int i;
+  int subshell_depth = 0;
+
+  for (i=1; i<numCommands; i++)
+    {
+      if (commands[i] != NULL)
+	{
+	  if (commands[i] == closedParan)
+	    subshell_depth--;
+	  else if (commands[i]->type == SUBSHELL_COMMAND)
+	    subshell_depth++;
+	  else if (subshell_depth == 0 && commands[i]->type == SEQUENCE_COMMAND)
+	    commands[i] = NULL;
+	}
+    }
+
+
   //printf("%i\n", numCommands);
   
-  int i;
   for (i=1; i<numCommands; i++)
     {
       // This command points to the closed parenthesis
