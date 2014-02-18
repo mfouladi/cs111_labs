@@ -123,7 +123,6 @@ execute_command (command_t c, int timetravel)
 	      if(input_fd < 0)
 		{
 		  fprintf(stderr, "execute_command: couldn't open %s\n", c->input);
-		  c->input = NULL;
 		}
 	      else
 		dup2(input_fd, 0);
@@ -136,11 +135,11 @@ execute_command (command_t c, int timetravel)
 	      if(output_fd < 0)
 		{
 		  fprintf(stderr, "execute_command: couldn't open %s\n", c->output);
-		  c->output = NULL;
 		}
 	      else
 		dup2(output_fd, 1);
 	    }
+
 	    execvp(c->u.word[0], c->u.word);
 
 	    // execvp should not return
