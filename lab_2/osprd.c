@@ -114,11 +114,8 @@ static void add_dependencies (struct file *filp, osprd_info_t *d)
 {	
 	if (filp->f_flags & F_OSPRD_LOCKED) {
 		osprd_info_t *ramdisk = file2osprd(filp);
-		if (d != ramdisk) {
-			int i = ramdisk - osprds;
-			d->dependencies[i] = 1;
-		}
-		
+		int i = ramdisk - osprds;
+		d->dependencies[i] = 1;
 	}
 }
 
@@ -249,13 +246,13 @@ static int osprd_close_last(struct inode *inode, struct file *filp)
 		
 		if (filp->f_flags & F_OSPRD_LOCKED) {
 			if (filp_writable) {
-				if (d->write_lock == 0) d->write_lock = 0;
+				if (d->write_lock == 1) d->write_lock = 0;
 				else eprintk("file attempted to unlock write lock it didn't have\n");			
 			}
 			else {
 				osp_spin_lock(&(d->mutex));
 
-				if (d->read_lock > 1) d->read_lock--;
+				if (d->read_lock > 0) d->read_lock--;
 				else eprintk("file attempted to unlock read lock it didn't have\n");
 				osp_spin_unlock(&(d->mutex));
 			}			
@@ -323,14 +320,15 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 		// Then, block at least until 'd->ticket_tail == local_ticket'.
 		// (Some of these operations are in a critical section and must
 		// be protected by a spinlock; which ones?)
+
 		int ticket;
 		osp_spin_lock(&(d->mutex));
-		// compiler warning
-		ticket = d->ticket_head++;
-		
+		ticket = d->ticket_head++;		
 		if (d->ticket_tail != ticket) {
 			osp_spin_unlock(&(d->mutex));
 			if (wait_event_interruptible(d->blockq, d->ticket_tail == ticket) == -ERESTARTSYS) {
+			        d->ticket_tail++;
+				wake_up_all(&(d->blockq));
 				return -ERESTARTSYS;
 			}
 		}
@@ -343,10 +341,14 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 			
  			if (check_deadlock()) {
 				release_dependencies(d);
+			        d->ticket_tail++;
+				wake_up_all(&(d->blockq));
 				return -EDEADLK;
 			}
 			if (wait_event_interruptible(d->blockq, d->write_lock == 0) == -ERESTARTSYS) {
 				release_dependencies(d);
+			        d->ticket_tail++;
+				wake_up_all(&(d->blockq));	
 				return -ERESTARTSYS;
 			}
 			release_dependencies(d);		
@@ -358,12 +360,17 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 				
 				if (check_deadlock()) {
 					release_dependencies(d);
+               			        d->ticket_tail++;
+					wake_up_all(&(d->blockq));
 					return -EDEADLK;
-					if (wait_event_interruptible(d->blockq, d->read_lock == 0) == -ERESTARTSYS) {
-						release_dependencies(d);
-						return -ERESTARTSYS;
-					}
 				}
+				if (wait_event_interruptible(d->blockq, d->read_lock == 0) == -ERESTARTSYS) {
+				        release_dependencies(d);
+				        d->ticket_tail++;
+					wake_up_all(&(d->blockq));
+				        return -ERESTARTSYS;
+				}
+
 				release_dependencies(d);					
 			}
 			d->write_lock = 1;
@@ -398,35 +405,33 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 			osp_spin_unlock(&(d->mutex));
 			return -EBUSY;
 		}
-		else {
-			osp_spin_unlock(&(d->mutex));
-		}
-		
-		osp_spin_lock(&(d->mutex));
+
+		d->ticket_head++;
+		osp_spin_unlock(&(d->mutex));
 
 		if (d->write_lock == 1) {
-			osp_spin_unlock(&(d->mutex));
+			d->ticket_tail++;
+			wake_up_all(&(d->blockq));
 			return -EBUSY;
 		}
 		
 		if (filp_writable) {
 			if (d->read_lock > 0) {
-				osp_spin_unlock(&(d->mutex));
+				d->ticket_tail++;
+				wake_up_all(&(d->blockq));
 				return -EBUSY;
 			}
 			d->write_lock = 1;
 		} 
 		else {
+			osp_spin_lock(&(d->mutex));
 			d->read_lock++;
+			osp_spin_unlock(&(d->mutex));
 		}
-		osp_spin_unlock(&(d->mutex));
 		
 		filp->f_flags |= F_OSPRD_LOCKED;
-		
-		osp_spin_lock(&(d->mutex));
 		d->ticket_tail++;
-		osp_spin_unlock(&(d->mutex));
-		
+		wake_up_all(&(d->blockq));
 		r = 0;		
 
 	} else if (cmd == OSPRDIOCRELEASE) {
@@ -440,20 +445,23 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 		
 		if (filp->f_flags & F_OSPRD_LOCKED) {
 			if (filp_writable) {
-				if (d->write_lock == 0) d->write_lock = 0;
+				if (d->write_lock == 1) d->write_lock = 0;
 				else return -EINVAL;			
 			}
 			else {
 				osp_spin_lock(&(d->mutex));
 				
-				if (d->read_lock > 1) d->read_lock--;
-				else return -EINVAL;
+				if (d->read_lock > 0) d->read_lock--;
+				else {
+  				        osp_spin_unlock(&(d->mutex));				        
+				        return -EINVAL;
+				}
 				osp_spin_unlock(&(d->mutex));
 			}			
 			
+			filp->f_flags &= ~F_OSPRD_LOCKED;
 			wake_up_all(&(d->blockq));
 		
-			filp->f_flags &= ~F_OSPRD_LOCKED;
                         r = 0;			
 		} else {
 			r = -EINVAL;
@@ -478,7 +486,6 @@ static void osprd_setup(osprd_info_t *d)
 	/* Add code here if you add fields to osprd_info_t.*/
 	d->write_lock = 0;
 	d->read_lock = 0;
-	// Compiler warning
 	for(i=0; i<NOSPRD; i++){
 		d->dependencies[i]=0;
 	}
