@@ -163,7 +163,7 @@ int isProperGrammar(char* parsedFile, int initSize, int parenCount, char nextInp
  */
 int parseFile(int (*get_next_byte) (void *), void *get_next_byte_argument, char* parsedFile, int script_varc, char** script_varv)
 {
-  printf("DEBUG: parseFile\n");
+  //printf("DEBUG: parseFile\n");
 
   int size = 0;
   size_t capacity = 512;
@@ -186,12 +186,16 @@ int parseFile(int (*get_next_byte) (void *), void *get_next_byte_argument, char*
   int isVariable = 0;
 
   //Used to check for valid redirection
-  int findSingleWord = 0;
-  int singleWordStarted = 0;
-  int foundLessThan = 0;
-  int foundSingleWord = 0;
+  // 0 - not processing redirection
+  // 1 - processing <
+  // 2 - processing input file
+  // 3 - input file done
+  // 4 - processing  >
+  // 5 - processing output file
+  // 6 - output file done
+  int redirection_status = 0; 
 
-  while( (c = get_next_byte(get_next_byte_argument)) && c != 0 && !feof(get_next_byte_argument))
+  while( (c = get_next_byte(get_next_byte_argument)) && c != '\0' && !feof(get_next_byte_argument))
     {
       //printf("DEBUG: parseFile: checking %c\n", c);
       
@@ -216,10 +220,10 @@ int parseFile(int (*get_next_byte) (void *), void *get_next_byte_argument, char*
 	    }
 
 	  char *arg = script_varv[i];
-	  printf("arg%i: ", i);
+	  //printf("arg%i: ", i);
 	  while (*arg != '\0')
 	    {
-	      printf("%c", *arg);
+	      //printf("%c", *arg);
 	      if (isWordCharacter(*arg) || isspace(*arg)) 
 		parsedFile[size++] = *(arg++);
 	      else
@@ -230,7 +234,7 @@ int parseFile(int (*get_next_byte) (void *), void *get_next_byte_argument, char*
 		  parsedFile = (char*)checked_grow_alloc((void*)parsedFile, &capacity);
 		}
 	    }
-	  printf("\n");
+	  //printf("\n");
 	  isVariable = 0;
 	  continue;
 	}
@@ -295,141 +299,86 @@ int parseFile(int (*get_next_byte) (void *), void *get_next_byte_argument, char*
       else if (c == ')')
 	parenCount--;
   
-      // If an I/O flag has been set to find
-      // single file name, then check for valid
-      // file name. Otherwise check if current character is
-      // I/O character 
-      if(findSingleWord)
-	{
-	  if(foundSingleWord)
-	    {
-	      if( c == '|' || c== '&' || c == ';' || c == '(' || 
-		  c == '\n')
-		{
-		  findSingleWord = 0;
-		  foundSingleWord = 0;
-		  singleWordStarted = 0;
-		  foundLessThan = 0;
-		}
-	      else if(c == '>' && foundLessThan)
-		{
-		  foundLessThan = 0;
-		  findSingleWord = 1;
-		  foundSingleWord = 0;
-		  singleWordStarted = 0;
-		}
-	      else if(isspace(c))
-		{
-		  //do nothing
-		}
-	      else
-		{
-		  error (1, 0, "Improper Syntax in File: Improper Redirect");
-		  return 0;
- 		}
-	    }
-	  else if(singleWordStarted)
-	    {
-	      if( c== '(' || c== '<')
-		{
-		  error (1, 0, "Improper Syntax in File: Improper Redirect");
-		  return 0;
-		}
-	      else if( c == '|' || c== '&' || c == ';' || c == '\n')
-		{
-		  findSingleWord = 0;
-		  foundSingleWord = 0;
-		  singleWordStarted = 0;
-		  foundLessThan = 0;
-		}
-	      else if(isspace(c))
-		{
-		  foundSingleWord = 1;
-		}
-	      else if( c == '>' && foundLessThan )
-		{
-		  findSingleWord = 1;
-		  singleWordStarted = 0;
-		  foundLessThan = 0;
-		  foundSingleWord = 0;
-		}
-	      else if(c == '>')
-		{
-		  error (1, 0, "Improper Syntax in File: Improper Redirect");
-		  return 0;
-		}
-	    }
-	  else if( c == '|' || c== '&' || c == ';' || c == '(' || 
-		   c == '>' || c == '<' || c == '\n')
-	    {
-	      error (1, 0, "Improper Syntax in File: Improper Redirect");
-	      return 0;
-	    }
-	  else if(isspace(c))
-	    {
-	      //do nothing
-	    }
-	  else
-	    {
-	      singleWordStarted = 1;
-	    }
-	}
-      else if(c == '<')
-	{
-	  findSingleWord = 1;
-	  foundLessThan = 1;
-	  foundSingleWord = 0;
-	  singleWordStarted = 0;
-	}
-      else if(c == '>')
-	{
-	  findSingleWord = 1;
-	  foundLessThan = 0;
-	  foundSingleWord = 0;
-	  singleWordStarted = 0;
-	}
-
-      // Add space before and after any special characters
+      // Add space between words and special tokens
       if (((isSpecialToken(c) && parsedFile[size-1] != c) 
 	   || (isWordCharacter(c) && isSpecialToken(parsedFile[size-1])))
 	  && !isspace(parsedFile[size-1])) 
 	{
-	  parsedFile[size] = ' ';
-	  size++;
+	  parsedFile[size++] = ' ';
 	  if(size >= (signed int) capacity)
 	    {
 	      parsedFile = (char*)checked_grow_alloc((void*)parsedFile, &capacity);
 	    }
 	}
+
+      int bad_redirect = 0;
+      if (redirection_status != 0)
+	{
+	  switch (redirection_status)
+	    {
+	    case 1:
+	      if (c == ' ') {}
+	      else if (isWordCharacter(c)) redirection_status = 2;
+	      else bad_redirect = 1; break;
+	    case 2:
+	      if (isWordCharacter(c)) {}
+	      else if (c == ' ') redirection_status = 3;
+	      else if (c == '>') redirection_status = 4;
+	      else if (isSpecialToken(c) || c == '\n') redirection_status = 0;
+	      else bad_redirect = 1; break;
+	    case 3:
+	      if (c == '>') redirection_status = 4;
+	      else if (isSpecialToken(c) || c == '\n') redirection_status = 0;
+	      else bad_redirect = 1; break;
+	    case 4:
+	      if (c == ' ') {}
+	      else if (isWordCharacter(c)) redirection_status = 5;
+	      else bad_redirect = 1; break;
+	    case 5:
+	      if (isWordCharacter(c)) {}
+	      else if (c == ' ') redirection_status = 6;
+	      else if (isSpecialToken(c) || c == '\n') redirection_status = 0;
+	      else bad_redirect = 1; break;
+	    case 6:
+	      if (isSpecialToken(c) || c == '\n') redirection_status = 0;
+	      else bad_redirect = 1; break;
+	    }
+	  if (bad_redirect)
+	    {
+	      error (1, 0, "Improper Syntax in File: Bad redirection\n");
+	    }
+	}
+      else if (c == '<')
+	{
+	  redirection_status = 1;
+	}
+      else if (c == '>')
+	{
+	  redirection_status = 4;
+	}
       
       //Add Valid Character to Array
-      parsedFile[size] = c;
-      
-      //Increment character count
-      size++;
-      
+      parsedFile[size++] = c;
+
       if(size == (signed int)capacity)
 	parsedFile = (char*)checked_grow_alloc((void*)parsedFile, &capacity);
     }
   
   //Check if file ended properly
-  if(parsedFile[size-1] != ';' && parsedFile[size-1]!='\n' && !isProperGrammar(parsedFile, size, parenCount, ';'))
+  if((parsedFile[size-1] == ';' || parsedFile[size-1]!='\n' || isProperGrammar(parsedFile, size, parenCount, ';'))
+     && parenCount == 0 && redirection_status != 1 && redirection_status != 4)
     {
-      error (1, 0, "Improper Syntax in File: File terminated incorrectly");
+      //Add Null Character to End of Array
+      parsedFile[size] = '\0';
+      //printf("%s\n", parsedFile);
+      return size;
     }
-
-  //Add Null Character to End of Array
-  parsedFile[size] = '\0';
-  //size++;
-  
-  if(parenCount > 0)
+  else
     {
-      error (1, 0, "Improper Syntax in File: Unclosed Parentheses");
+      error (1, 0, "Improper Syntax in File: File terminated incorrectly\n");
       return 0;
     }
-  
-  printf("%s\n", parsedFile);
-  return size;
+
 }
 
 /*
@@ -440,7 +389,7 @@ int parseFile(int (*get_next_byte) (void *), void *get_next_byte_argument, char*
 int createCommandTree(char* parsedFile, int size, command_t* commands)
 {
   // Design
-  printf("DEBUG: CreateCommandTree\n");
+  //printf("DEBUG: CreateCommandTree\n");
   
   //Checking for Errors
   if(parsedFile == NULL)
@@ -468,7 +417,7 @@ int createCommandTree(char* parsedFile, int size, command_t* commands)
   command_t temp;
   for(i=0; i < size; i++)
   {
-    printf("%c", parsedFile[i]);
+    //printf("%c", parsedFile[i]);
 
     temp = (command_t)checked_malloc(sizeof(struct command));
     temp->status = -1;
@@ -736,7 +685,7 @@ command_stream_t linkCommands(command_t* commands, int numCommands)
 	      op->u.command[0] = operandStack[--operands];
 	      operandStack[operands++] = op;
 	    }
-	  if (operands != 1) printf("Linking algorithm error!\n");
+	  if (operands != 1) fprintf(stderr, "Linking algorithm error!\n");
 	  commandForest->commands[commandForest->size++] = operandStack[--operands];
 	}
       // This command points to an actual command
@@ -773,7 +722,7 @@ command_stream_t linkCommands(command_t* commands, int numCommands)
 	      operatorStack[operators++] = commands[i];
 	      break;
 	    default:
-	      printf("Error: linkCommands could not read from initCommandTree");
+	      fprintf(stderr, "Error: linkCommands could not read from initCommandTree");
 	    }
 	}
     }
