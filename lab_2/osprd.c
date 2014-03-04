@@ -44,23 +44,31 @@ MODULE_AUTHOR("Skeletor");
 static int nsectors = 32;
 module_param(nsectors, int, 0);
 
+#define NOSPRD 4
+
 
 /* The internal representation of our device. */
 typedef struct osprd_info {
 	uint8_t *data;                  // The data array. Its size is
 	                                // (nsectors * SECTOR_SIZE) bytes.
-
+	
 	osp_spinlock_t mutex;           // Mutex for synchronizing access to
 					// this block device
 
 	unsigned ticket_head;		// Currently running ticket for
 					// the device lock
-
+	
 	unsigned ticket_tail;		// Next available ticket for
-					// the device lock
-
+	                                // the device lock
+        
 	wait_queue_head_t blockq;       // Wait queue for tasks blocked on
 					// the device lock
+
+	int write_lock;
+
+	int read_lock;
+
+        int dependencies[NOSPRD];
 
 	/* HINT: You may want to add additional fields to help
 	         in detecting deadlock. */
@@ -73,7 +81,6 @@ typedef struct osprd_info {
 	struct gendisk *gd;             // The generic disk.
 } osprd_info_t;
 
-#define NOSPRD 4
 static osprd_info_t osprds[NOSPRD];
 
 
@@ -100,6 +107,68 @@ static void for_each_open_file(struct task_struct *task,
 			       osprd_info_t *user_data);
 
 
+// Checks a file to see if its locked, if yes it adds that file's lock to d's dependencies
+// passed to for_each_open_file to add that processes locks to the dependency array
+// for processes that are blocking (not in queue)
+static void add_dependencies (struct file *filp, osprd_info_t *d)
+{	
+	if (filp->f_flags & F_OSPRD_LOCKED) {
+		osprd_info_t *ramdisk = file2osprd(filp);
+		int i = ramdisk - osprds;
+		d->dependencies[i] = 1;
+	}
+}
+
+// release lock dependencies after process is no longer blocking
+static void release_dependencies(osprd_info_t *d)
+{
+	int i;
+	for(i=0;i<NOSPRD;i++) {
+		d->dependencies[i] = 0;
+	}
+	
+}
+
+static int check_deadlock (void)
+{
+	int temp_depends[4][4];
+	int eliminated[4];
+	int i, j, k;
+	// Copy over the dependencies to temp
+	for (i=0; i<NOSPRD; i++) {
+		eliminated[i]=0;
+		for (j=0; j<NOSPRD; j++) {
+			temp_depends[i][j] = osprds[i].dependencies[j];
+		}
+	}
+	
+	// runs 4 times to eliminate all ramdisks
+	for (i=0; i<NOSPRD; i++) {
+		// check for a ramdisk with no dependencies
+		for (j=0; j<NOSPRD; j++) {
+			// ignore ramdisks we've already eliminated
+			if (eliminated[j] == 1) continue;
+			// check each entry in the ramdisks temp array
+			for (k=0; k<NOSPRD; k++) {
+				if (temp_depends[j][k] == 1) break;
+			}
+			// if this ramdisk had dependencies
+			if (k != NOSPRD) continue;
+			
+			// remove the eliminated ramdisk from the other temp arrays
+			eliminated[j] = 1;
+			for (k=0; k<NOSPRD; k++) {
+				temp_depends[k][j] = 0;
+			}
+			break;
+		}
+		// if we weren't able to eliminate any ramdisks this round true for deadlock
+		if (j == NOSPRD) return 1;
+	}
+	// we eliminated all ramdisks, so no deadlock
+	return 0;
+}
+
 /*
  * osprd_process_request(d, req)
  *   Called when the user reads or writes a sector.
@@ -107,6 +176,12 @@ static void for_each_open_file(struct task_struct *task,
  */
 static void osprd_process_request(osprd_info_t *d, struct request *req)
 {
+	unsigned int cmd_type;
+	unsigned long size_of_sector;
+	unsigned long starting_sector;
+	unsigned long starting_sector_location;
+	unsigned long ending_sector;
+
 	if (!blk_fs_request(req)) {
 		end_request(req, 0);
 		return;
@@ -119,10 +194,29 @@ static void osprd_process_request(osprd_info_t *d, struct request *req)
 	// Read about 'struct request' in <linux/blkdev.h>.
 	// Consider the 'req->sector', 'req->current_nr_sectors', and
 	// 'req->buffer' members, and the rq_data_dir() function.
+	
+	cmd_type = rq_data_dir(req);
+	size_of_sector = (req->current_nr_sectors)*SECTOR_SIZE;
+	starting_sector = (req->sector);
+	starting_sector_location = (unsigned long) (d->data + ((req->sector)*SECTOR_SIZE));
+	ending_sector = (req->sector)+(req->current_nr_sectors);
 
-	// Your code here.
-	eprintk("Should process request...\n");
+	if (starting_sector > nsectors || ending_sector > nsectors) {
+		eprintk("Error: Sectors out of range.\n");
+		end_request(req,0);
+	}
 
+	if ( cmd_type == WRITE) {
+		memcpy((void*) starting_sector_location, (void*)req->buffer, size_of_sector);
+	}
+	else if ( cmd_type == READ) {
+		memcpy((void*)req->buffer, (void*)starting_sector_location, size_of_sector);
+	}
+	else {
+		eprintk("Error: Unkown Command. Must be READ or WRITE\n");
+		end_request(req, 0);
+	}
+	
 	end_request(req, 1);
 }
 
@@ -137,7 +231,6 @@ static int osprd_open(struct inode *inode, struct file *filp)
 	return 0;
 }
 
-
 // This function is called when a /dev/osprdX file is finally closed.
 // (If the file descriptor was dup2ed, this function is called only when the
 // last copy is closed.)
@@ -150,12 +243,22 @@ static int osprd_close_last(struct inode *inode, struct file *filp)
 		// EXERCISE: If the user closes a ramdisk file that holds
 		// a lock, release the lock.  Also wake up blocked processes
 		// as appropriate.
+		
+		if (filp->f_flags & F_OSPRD_LOCKED) {
+			if (filp_writable) {
+				if (d->write_lock == 1) d->write_lock = 0;
+				else eprintk("file attempted to unlock write lock it didn't have\n");			
+			}
+			else {
+				osp_spin_lock(&(d->mutex));
 
-		// Your code here.
+				if (d->read_lock > 0) d->read_lock--;
+				else eprintk("file attempted to unlock read lock it didn't have\n");
+				osp_spin_unlock(&(d->mutex));
+			}			
+		}
 
-		// This line avoids compiler warnings; you may remove it.
-		(void) filp_writable, (void) d;
-
+		wake_up_all(&(d->blockq));
 	}
 
 	return 0;
@@ -178,9 +281,6 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 
 	// is file open for writing?
 	int filp_writable = (filp->f_mode & FMODE_WRITE) != 0;
-
-	// This line avoids compiler warnings; you may remove it.
-	(void) filp_writable, (void) d;
 
 	// Set 'r' to the ioctl's return value: 0 on success, negative on error
 
@@ -221,35 +321,152 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 		// (Some of these operations are in a critical section and must
 		// be protected by a spinlock; which ones?)
 
-		// Your code here (instead of the next two lines).
-		eprintk("Attempting to acquire\n");
-		r = -ENOTTY;
+		int ticket;
+		osp_spin_lock(&(d->mutex));
+		ticket = d->ticket_head++;		
+		if (d->ticket_tail != ticket) {
+			osp_spin_unlock(&(d->mutex));
+			if (wait_event_interruptible(d->blockq, d->ticket_tail == ticket) == -ERESTARTSYS) {
+			        d->ticket_tail++;
+				wake_up_all(&(d->blockq));
+				return -ERESTARTSYS;
+			}
+		}
+		else {
+			osp_spin_unlock(&(d->mutex));
+		}
+		
+		if (d->write_lock == 1) {
+			for_each_open_file (current, add_dependencies, d);
+			
+ 			if (check_deadlock()) {
+				release_dependencies(d);
+			        d->ticket_tail++;
+				wake_up_all(&(d->blockq));
+				return -EDEADLK;
+			}
+			if (wait_event_interruptible(d->blockq, d->write_lock == 0) == -ERESTARTSYS) {
+				release_dependencies(d);
+			        d->ticket_tail++;
+				wake_up_all(&(d->blockq));	
+				return -ERESTARTSYS;
+			}
+			release_dependencies(d);		
+		}
+		
+		if (filp_writable) {
+			if (d->read_lock > 0) {
+				for_each_open_file (current, add_dependencies, d);
+				
+				if (check_deadlock()) {
+					release_dependencies(d);
+               			        d->ticket_tail++;
+					wake_up_all(&(d->blockq));
+					return -EDEADLK;
+				}
+				if (wait_event_interruptible(d->blockq, d->read_lock == 0) == -ERESTARTSYS) {
+				        release_dependencies(d);
+				        d->ticket_tail++;
+					wake_up_all(&(d->blockq));
+				        return -ERESTARTSYS;
+				}
 
+				release_dependencies(d);					
+			}
+			d->write_lock = 1;
+		} 
+		else {
+			osp_spin_lock(&(d->mutex));
+			d->read_lock++;
+			osp_spin_unlock(&(d->mutex));
+		}
+		
+		filp->f_flags |= F_OSPRD_LOCKED;
+		
+		osp_spin_lock(&(d->mutex));
+		d->ticket_tail++;
+		osp_spin_unlock(&(d->mutex));
+
+		wake_up_all(&(d->blockq));
+		
+		r = 0;
+		
 	} else if (cmd == OSPRDIOCTRYACQUIRE) {
-
+		
 		// EXERCISE: ATTEMPT to lock the ramdisk.
 		//
 		// This is just like OSPRDIOCACQUIRE, except it should never
 		// block.  If OSPRDIOCACQUIRE would block or return deadlock,
 		// OSPRDIOCTRYACQUIRE should return -EBUSY.
 		// Otherwise, if we can grant the lock request, return 0.
+		osp_spin_lock(&(d->mutex));
+		
+		if (d->ticket_tail != d->ticket_head) {
+			osp_spin_unlock(&(d->mutex));
+			return -EBUSY;
+		}
 
-		// Your code here (instead of the next two lines).
-		eprintk("Attempting to try acquire\n");
-		r = -ENOTTY;
+		d->ticket_head++;
+		osp_spin_unlock(&(d->mutex));
+
+		if (d->write_lock == 1) {
+			d->ticket_tail++;
+			wake_up_all(&(d->blockq));
+			return -EBUSY;
+		}
+		
+		if (filp_writable) {
+			if (d->read_lock > 0) {
+				d->ticket_tail++;
+				wake_up_all(&(d->blockq));
+				return -EBUSY;
+			}
+			d->write_lock = 1;
+		} 
+		else {
+			osp_spin_lock(&(d->mutex));
+			d->read_lock++;
+			osp_spin_unlock(&(d->mutex));
+		}
+		
+		filp->f_flags |= F_OSPRD_LOCKED;
+		d->ticket_tail++;
+		wake_up_all(&(d->blockq));
+		r = 0;		
 
 	} else if (cmd == OSPRDIOCRELEASE) {
-
+		
 		// EXERCISE: Unlock the ramdisk.
 		//
 		// If the file hasn't locked the ramdisk, return -EINVAL.
 		// Otherwise, clear the lock from filp->f_flags, wake up
 		// the wait queue, perform any additional accounting steps
 		// you need, and return 0.
-
-		// Your code here (instead of the next line).
-		r = -ENOTTY;
-
+		
+		if (filp->f_flags & F_OSPRD_LOCKED) {
+			if (filp_writable) {
+				if (d->write_lock == 1) d->write_lock = 0;
+				else return -EINVAL;			
+			}
+			else {
+				osp_spin_lock(&(d->mutex));
+				
+				if (d->read_lock > 0) d->read_lock--;
+				else {
+  				        osp_spin_unlock(&(d->mutex));				        
+				        return -EINVAL;
+				}
+				osp_spin_unlock(&(d->mutex));
+			}			
+			
+			filp->f_flags &= ~F_OSPRD_LOCKED;
+			wake_up_all(&(d->blockq));
+		
+                        r = 0;			
+		} else {
+			r = -EINVAL;
+		}
+		
 	} else
 		r = -ENOTTY; /* unknown command */
 	return r;
@@ -261,10 +478,17 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 static void osprd_setup(osprd_info_t *d)
 {
 	/* Initialize the wait queue. */
+	int i;
 	init_waitqueue_head(&d->blockq);
 	osp_spin_lock_init(&d->mutex);
 	d->ticket_head = d->ticket_tail = 0;
-	/* Add code here if you add fields to osprd_info_t. */
+
+	/* Add code here if you add fields to osprd_info_t.*/
+	d->write_lock = 0;
+	d->read_lock = 0;
+	for(i=0; i<NOSPRD; i++){
+		d->dependencies[i]=0;
+	}
 }
 
 
