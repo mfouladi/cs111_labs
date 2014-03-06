@@ -53,6 +53,8 @@ main (int argc, char **argv)
 
   int shell_varc = argc - (optind + 1);
   char** shell_varv = argv + (optind);
+  // DEBUG
+  //printf("%s\n", shell_varv[1]);
   command_stream_t command_stream = make_command_stream (get_next_byte, script_stream, shell_varc, shell_varv);
 
   command_t last_command = NULL;
