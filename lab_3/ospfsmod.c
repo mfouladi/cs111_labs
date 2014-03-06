@@ -520,7 +520,15 @@ ospfs_unlink(struct inode *dirino, struct dentry *dentry)
 	}
 
 	od->od_ino = 0;
-	oi->oi_nlink--;
+	if(oi->oi_ftype == OSPFS_FTYPE_SYMLINK){
+		ospfs_symlink_inode_t *soi = (ospfs_symlink_inode_t*) oi;
+		soi->oi_nlink = 0;
+		memset(soi->oi_symlink, 0 , OSPFS_MAXSYMLINKLEN + 1);
+	}
+	else{
+		oi->oi_nlink--;	
+	}
+
 	return 0;
 }
 
