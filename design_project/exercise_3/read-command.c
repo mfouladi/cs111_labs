@@ -163,7 +163,7 @@ int isProperGrammar(char* parsedFile, int initSize, int parenCount, char nextInp
  */
 int parseFile(int (*get_next_byte) (void *), void *get_next_byte_argument, char* parsedFile, int script_varc, char** script_varv)
 {
-  printf("DEBUG: parseFile\n");
+  //printf("DEBUG: parseFile\n");
 
   int size = 0;
   size_t capacity = 512;
@@ -208,6 +208,12 @@ int parseFile(int (*get_next_byte) (void *), void *get_next_byte_argument, char*
 
       if (isVariable)
 	{
+	  if (c < '0' || c > '9')
+	    {
+	      error (1, 0, "Error: variables must be integers");
+	      return 0;
+	    }
+
 	  int i = c - '0';
 	  if (i > script_varc)
 	    {
@@ -216,21 +222,27 @@ int parseFile(int (*get_next_byte) (void *), void *get_next_byte_argument, char*
 	    }
 
 	  char *arg = script_varv[i];
-	  printf("arg%i: ", i);
+	  // DEBUG
+	  //printf("arg%i:\n", i);
 	  while (*arg != '\0')
 	    {
-	      printf("%c", *arg);
+	      // DEBUG
+	      //printf("%c", *arg);
+
 	      if (isWordCharacter(*arg) || isspace(*arg)) 
 		parsedFile[size++] = *(arg++);
+	      else if (isSpecialToken(*arg))
+		error (1, 0, "Error: script arg contains special tokens! \nWhat exactly are you trying to do here...?");
 	      else
-		error (1, 0, "Error: invalid args");
+		error (1, 0, "Error: script arg contains invalid characters");
 
 	      if(size >= (signed int) capacity)
 		{
 		  parsedFile = (char*)checked_grow_alloc((void*)parsedFile, &capacity);
 		}
 	    }
-	  printf("\n");
+	  // DEBUG
+	  //printf("\n");
 	  isVariable = 0;
 	  continue;
 	}
@@ -428,7 +440,8 @@ int parseFile(int (*get_next_byte) (void *), void *get_next_byte_argument, char*
       return 0;
     }
   
-  printf("%s\n", parsedFile);
+  // DEBUG
+  //printf("%s\n", parsedFile);
   return size;
 }
 
@@ -440,7 +453,7 @@ int parseFile(int (*get_next_byte) (void *), void *get_next_byte_argument, char*
 int createCommandTree(char* parsedFile, int size, command_t* commands)
 {
   // Design
-  printf("DEBUG: CreateCommandTree\n");
+  //printf("DEBUG: CreateCommandTree\n");
   
   //Checking for Errors
   if(parsedFile == NULL)
@@ -468,7 +481,7 @@ int createCommandTree(char* parsedFile, int size, command_t* commands)
   command_t temp;
   for(i=0; i < size; i++)
   {
-    printf("%c", parsedFile[i]);
+    //printf("%c", parsedFile[i]);
 
     temp = (command_t)checked_malloc(sizeof(struct command));
     temp->status = -1;
