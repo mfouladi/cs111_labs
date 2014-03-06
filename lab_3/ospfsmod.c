@@ -769,17 +769,21 @@ change_size(ospfs_inode_t *oi, uint32_t new_size)
 	int r = 0;
 
 	while (ospfs_size2nblocks(oi->oi_size) < ospfs_size2nblocks(new_size)) {
-	        /* EXERCISE: Your code here */
-		return -EIO; // Replace this line
+	    r = add_block(oi);
+		if (r == -ENOSPC)
+			new_size = old_size;
+		if (r == -EIO)
+			return r;
 	}
 	while (ospfs_size2nblocks(oi->oi_size) > ospfs_size2nblocks(new_size)) {
-	        /* EXERCISE: Your code here */
-		return -EIO; // Replace this line
+	    r = remove_block(oi);
+		if (r == -EIO)
+			return r;
 	}
 
-	/* EXERCISE: Make sure you update necessary file meta data
-	             and return the proper value. */
-	return -EIO; // Replace this line
+	if (r == 0)
+		oi->oi_size = new_size;
+	return r;
 }
 
 
@@ -1003,12 +1007,38 @@ create_blank_direntry(ospfs_inode_t *dir_oi)
 	// Outline:
 	// 1. Check the existing directory data for an empty entry.  Return one
 	//    if you find it.
+	while( dir_i < dir_oi->oi_size)
+	{
+		od = ospfs_inode_data(dir_oi, dir_i);
+
+		// If there's an empty dir entry
+		if(od->od_ino == 0)
+		{
+			break;
+		}
+		od = NULL;
+		dir_i += OSPFS_DIRENTRY_SIZE;
+	}
 	// 2. If there's no empty entries, add a block to the directory.
 	//    Use ERR_PTR if this fails; otherwise, clear out all the directory
 	//    entries and return one of them.
 
-	/* EXERCISE: Your code here. */
-	return ERR_PTR(-EINVAL); // Replace this line
+	if( od == NULL)
+	{
+		// Try to increase the size of directory inode to accomadate the new entry
+		r = change_size(dir_oi, dir_oi->oi_size + OSPFS_DIRENTRY_SIZE);
+		if( r < 0)
+			return ERR_PTR(r);
+
+		// Start of the new dir entry is OSPFS_DIRENTRY_SIZE before the end of
+		//  the new size
+		od = ospfs_inode_data(dir_oi, dir_oi->oi_size - OSPFS_DIRENTRY_SIZE);
+	}
+
+	// Zero out the new dir entry
+	od->od_ino = 0;
+	od->od_name[0] = 0;
+	return od;
 }
 
 // ospfs_link(src_dentry, dir, dst_dentry
@@ -1042,8 +1072,37 @@ create_blank_direntry(ospfs_inode_t *dir_oi)
 
 static int
 ospfs_link(struct dentry *src_dentry, struct inode *dir, struct dentry *dst_dentry) {
-	/* EXERCISE: Your code here. */
-	return -EINVAL;
+	
+	//Check if dst_dentry->d_name.len is too long, and return error ENAMETOOLONG
+	if(dst_dentry->d_name.len > OSPFS_MAXNAMELEN){
+		return ENAMETOOLONG;
+	}
+
+	ospfs_inode_t *dir_oi = ospfs_inode(dir->i_ino);
+	numEntries = dir_oi->oi_size;
+
+	//Check if file with dst_dentry->d_name.name exits in directory already and return error
+	if(find_direntry(dir_oi, dst_dentry->d_name.name, dst_dentry->d_name.len) == NULL){
+		return EEXIST;
+	}
+
+	//Check if disk is full and file cannot be created, and return error
+	//ospfs_super->osnblocks;
+	//ospfs_super->os_ninodes;
+
+	//Else create link and return zero
+	//Create blank directory entry
+	ospfs_direntry_t dest_dir = create_blank_direntry(dir_oi);
+	strncpy(dest_dir->od_name, dst_dentry->d_name.name, dst_dentry->d_name.len);
+	dest_dir->od_name[dst_dentry->d_name.len]=0;
+
+	//Point Hard Link to Source
+	dst_dentry->d_inode_>i_ino = src_dentry->d_inode->i_ino;
+	//Increment Source HardLink Count
+	ospfs_inode_t *src_oi = ospfs_inode(src_dentry->d_inode->i_ino);
+	src_oi->oi_nlink++;
+
+	return 0;
 }
 
 // ospfs_create
@@ -1079,9 +1138,7 @@ static int
 ospfs_create(struct inode *dir, struct dentry *dentry, int mode, struct nameidata *nd)
 {
 	ospfs_inode_t *dir_oi = ospfs_inode(dir->i_ino);
-	uint32_t entry_ino = 0;
-	/* EXERCISE: Your code here. */
-	return -EINVAL; // Replace this line
+	
 
 	/* Execute this code after your function has successfully created the
 	   file.  Set entry_ino to the created file's inode number before
