@@ -771,7 +771,7 @@ add_block(ospfs_inode_t *oi)
 
 	int32_t direct = direct_index(n);
 	int32_t indir = indir_index(n);
-	int32_T indir2 = indir2_index(n);
+	int32_t indir2 = indir2_index(n);
 
 	// the block is in oi_direct
 	if (indir == -1) {
