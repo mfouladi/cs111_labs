@@ -779,7 +779,7 @@ add_block(ospfs_inode_t *oi)
 		if (oi->oi_direct[direct] == 0) {
 			return -ENOSPC;
 		}
-		zero_block (io->oi_direct[direct]);
+		zero_block (oi->oi_direct[direct]);
 	}
 	// The block is in oi_indirect
 	else if (indir2 == -1) {
@@ -816,20 +816,20 @@ add_block(ospfs_inode_t *oi)
 			allocated[0] = &(oi->oi_indirect2);
 		}
 		// The block was the first entry in its indirect block
+		uint32_t *oi_indirect2 = ospfs_block (oi->oi_indirect2);
 		if (direct == 0) {
-			oi->oi_indirect2[indir] = allocate_block();
-			if (oi->oi_indirect2[indir] == 0) {
+			oi_indirect2[indir] = allocate_block();
+			if (oi_indirect2[indir] == 0) {
 				if (allocated[0] != 0) {
 					free_block (*allocated[0]);
 					*allocated[0] = 0;
 				}
 				return -ENOSPC;
 			}
-			zero_block (oi->oi_indirect2[indir]);
-			allocated[1] = &(oi->oi_indirect2[indir]);
+			zero_block (oi_indirect2[indir]);
+			allocated[1] = &(oi_indirect2[indir]);
 		}
 
-		uint32_t *oi_indirect2 = ospfs_block (oi->oi_indirect2);
 		uint32_t *oi_indirect2_indirect = ospfs_block (oi_indirect2[indir]);
 		oi_indirect2_indirect[direct] = allocate_block();
 		if (oi_indirect2_indirect[direct] == 0) {
@@ -887,7 +887,7 @@ remove_block(ospfs_inode_t *oi)
 	/* EXERCISE: Your code here */
 	int32_t direct = direct_index(n-1);
 	int32_t indir = indir_index(n-1);
-	int32_T indir2 = indir2_index(n-1);
+	int32_t indir2 = indir2_index(n-1);
 	
 	// the block is in oi_direct
 	if (indir == -1) {
