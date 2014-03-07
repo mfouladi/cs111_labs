@@ -910,8 +910,8 @@ remove_block(ospfs_inode_t *oi)
 		free_block (oi_indirect2_indirect[direct]);
 		// The block was the first entry		
 		if (direct == 0) {
-			free_block (oi->oi_indirect2[indir]);
-			oi->oi_indirect2[indir] = 0;
+			free_block (oi_indirect2[indir]);
+			oi_indirect2[indir] = 0;
 			// the indirect block was the first entry in oi_indirect2
 			if (indir == 0) {
 				free_block (oi->oi_indirect2);
