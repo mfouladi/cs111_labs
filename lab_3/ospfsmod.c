@@ -445,9 +445,6 @@ ospfs_dir_readdir(struct file *filp, void *dirent, filldir_t filldir)
 
 	// actual entries
 	while (r == 0 && ok_so_far >= 0 && f_pos >= 2) {
-		ospfs_direntry_t *od;
-		ospfs_inode_t *entry_oi;
-
 		/* If at the end of the directory, set 'r' to 1 and exit
 		 * the loop.  For now we do this all the time.
 		 *
@@ -477,7 +474,7 @@ ospfs_dir_readdir(struct file *filp, void *dirent, filldir_t filldir)
 			continue;
 		}
 		//Get iNode for the entry
-		ospfs_inode_t *entry_oi = ospfs_inode(dirEntry->od_ino);
+		ospfs_inode_t* entry_oi = ospfs_inode(dirEntry->od_ino);
 		if (entry_oi == NULL){
 			f_pos++;
 			continue;
@@ -889,7 +886,7 @@ ospfs_read(struct file *filp, char __user *buffer, size_t count, loff_t *f_pos)
 	// Make sure we don't read past the end of the file!
 	// Change 'count' so we never read past the end of the file.
 	if( count+(*f_pos) > oi->oi_size){
-		count = oi->size;
+		count = oi->oi_size;
 	}
 
 	// Copy the data to user block by block
@@ -963,11 +960,19 @@ ospfs_write(struct file *filp, const char __user *buffer, size_t count, loff_t *
 
 	// Support files opened with the O_APPEND flag.  To detect O_APPEND,
 	// use struct file's f_flags field and the O_APPEND bit.
-	/* EXERCISE: Your code here */
+	if(filp->f_flags & O_APPEND){
+		*f_pos = oi->oi_size;
+	}
 
 	// If the user is writing past the end of the file, change the file's
 	// size to accomodate the request.  (Use change_size().)
-	/* EXERCISE: Your code here */
+		// Make sure we don't read past the end of the file!
+	// Change 'count' so we never read past the end of the file.
+	if( count+(*f_pos) > oi->oi_size){
+		int r = change_size(oi, count+(*f_pos));
+		if(r < 0)
+			return -EIO;
+	}
 
 	// Copy data block by block
 	while (amount < count && retval >= 0) {
@@ -986,9 +991,15 @@ ospfs_write(struct file *filp, const char __user *buffer, size_t count, loff_t *
 		// Copy data from user space. Return -EFAULT if unable to read
 		// read user space.
 		// Keep track of the number of bytes moved in 'n'.
-		/* EXERCISE: Your code here */
-		retval = -EIO; // Replace these lines
-		goto done;
+		n = OSPFS_BLKSIZE - ((*f_pos) % OSPFS_BLKSIZE);
+
+		//if amount needed is less than remaining, decrease to amount needed
+		if( count < n+amount)
+			n = count - amount;
+
+		if(copy_from_user(data, buffer, n) != 0){
+			return -EFAULT;
+		}
 
 		buffer += n;
 		amount += n;
@@ -1062,38 +1073,36 @@ create_blank_direntry(ospfs_inode_t *dir_oi)
 	// Outline:
 	// 1. Check the existing directory data for an empty entry.  Return one
 	//    if you find it.
-	while( dir_i < dir_oi->oi_size)
-	{
-		od = ospfs_inode_data(dir_oi, dir_i);
+	uint32_t it = 0;
+	ospfs_direntry_t* currInode = NULL;
+	while( it < dir_oi->oi_size){
+		currInode = ospfs_inode_data(dir_oi, it);
 
 		// If there's an empty dir entry
-		if(od->od_ino == 0)
-		{
+		if(currInode->od_ino == 0){
 			break;
 		}
-		od = NULL;
-		dir_i += OSPFS_DIRENTRY_SIZE;
+		currInode = NULL;
+		it += OSPFS_DIRENTRY_SIZE;
 	}
 	// 2. If there's no empty entries, add a block to the directory.
 	//    Use ERR_PTR if this fails; otherwise, clear out all the directory
 	//    entries and return one of them.
 
-	if( od == NULL)
-	{
-		// Try to increase the size of directory inode to accomadate the new entry
-		r = change_size(dir_oi, dir_oi->oi_size + OSPFS_DIRENTRY_SIZE);
+	if( currInode == NULL){
+		// Increase Size of Directory
+		int r = change_size(dir_oi, dir_oi->oi_size + OSPFS_DIRENTRY_SIZE);
 		if( r < 0)
 			return ERR_PTR(r);
 
-		// Start of the new dir entry is OSPFS_DIRENTRY_SIZE before the end of
-		//  the new size
-		od = ospfs_inode_data(dir_oi, dir_oi->oi_size - OSPFS_DIRENTRY_SIZE);
+		// New Directory is at the size of the directory - the size of a single directory
+		currInode = ospfs_inode_data(dir_oi, dir_oi->oi_size - OSPFS_DIRENTRY_SIZE);
 	}
 
 	// Zero out the new dir entry
-	od->od_ino = 0;
-	od->od_name[0] = 0;
-	return od;
+	currInode->od_ino = 0;
+	memset(currInode->od_name,0,OSPFS_MAXNAMELEN + 1);
+	return currInode;
 }
 
 // ospfs_link(src_dentry, dir, dst_dentry
@@ -1134,10 +1143,9 @@ ospfs_link(struct dentry *src_dentry, struct inode *dir, struct dentry *dst_dent
 	}
 
 	ospfs_inode_t *dir_oi = ospfs_inode(dir->i_ino);
-	numEntries = dir_oi->oi_size;
 
 	//Check if file with dst_dentry->d_name.name exits in directory already and return error
-	if(find_direntry(dir_oi, dst_dentry->d_name.name, dst_dentry->d_name.len) == NULL){
+	if(find_direntry(dir_oi, dst_dentry->d_name.name, dst_dentry->d_name.len) == 0){
 		return EEXIST;
 	}
 
@@ -1147,12 +1155,12 @@ ospfs_link(struct dentry *src_dentry, struct inode *dir, struct dentry *dst_dent
 
 	//Else create link and return zero
 	//Create blank directory entry
-	ospfs_direntry_t dest_dir = create_blank_direntry(dir_oi);
+	ospfs_direntry_t* dest_dir = create_blank_direntry(dir_oi);
 	strncpy(dest_dir->od_name, dst_dentry->d_name.name, dst_dentry->d_name.len);
 	dest_dir->od_name[dst_dentry->d_name.len]=0;
 
 	//Point Hard Link to Source
-	dst_dentry->d_inode_>i_ino = src_dentry->d_inode->i_ino;
+	dst_dentry->d_inode->i_ino = src_dentry->d_inode->i_ino;
 	//Increment Source HardLink Count
 	ospfs_inode_t *src_oi = ospfs_inode(src_dentry->d_inode->i_ino);
 	src_oi->oi_nlink++;
@@ -1197,14 +1205,14 @@ ospfs_create(struct inode *dir, struct dentry *dentry, int mode, struct nameidat
 	if(dentry->d_name.len > OSPFS_MAXNAMELEN)
 		return ENAMETOOLONG;
 
-	//Check if file with dst_dentry->d_name.name exits in directory already and return error
-	if(find_direntry(dir_oi, dst_dentry->d_name.name, dst_dentry->d_name.len) == NULL)
+	//Check if file with dentry->d_name.name exits in directory already and return error
+	if(find_direntry(dir_oi, dentry->d_name.name, dentry->d_name.len) == NULL)
 		return EEXIST;
 
 	//Check if the disk is full, and the file can't be created
 
 	//Find an empty directory entry
-	ospfs_direntry_t new_dir_entry = create_blank_direntry(dir_oi);
+	ospfs_direntry_t* new_dir_entry = create_blank_direntry(dir_oi);
 	if (IS_ERR(new_dir_entry))
 		return PTR_ERR(new_dir_entry);
 
@@ -1292,21 +1300,20 @@ ospfs_symlink(struct inode *dir, struct dentry *dentry, const char *symname)
 	if(strlen(symname)> OSPFS_MAXNAMELEN)
 		return -ENAMETOOLONG;
 
-	//Check if file with dst_dentry->d_name.name exits in directory already and return error
-	if(find_direntry(dir_oi, dst_dentry->d_name.name, dst_dentry->d_name.len) == NULL)
+	//Check if file with dentry->d_name.name exits in directory already and return error
+	if(find_direntry(dir_oi, dentry->d_name.name, dentry->d_name.len) == NULL)
 		return EEXIST;
 
 	//Find an empty directory entry
-	ospfs_direntry_t new_dir_entry = create_blank_direntry(dir_oi);
+	ospfs_direntry_t* new_dir_entry = create_blank_direntry(dir_oi);
 	if (IS_ERR(new_dir_entry))
 		return PTR_ERR(new_dir_entry);
 
 	//Look for an open Inode Entry
-	uint32_t entry_ino = 1;
-	ospfs_symlink_inode * created_inode;
+	ospfs_symlink_inode_t* created_inode;
 	while(entry_ino < (ospfs_super->os_ninodes))
 	{
-		created_inode = (ospfs_symlink_inode*) ospfs_inode(entry_ino);
+		created_inode = (ospfs_symlink_inode_t*) ospfs_inode(entry_ino);
 
 		//if found, increment hardlink and break
 		if(created_inode && created_inode->oi_nlink == 0)
@@ -1363,11 +1370,81 @@ ospfs_symlink(struct inode *dir, struct dentry *dentry, const char *symname)
 static void *
 ospfs_follow_link(struct dentry *dentry, struct nameidata *nd)
 {
-	ospfs_symlink_inode_t *oi =
-		(ospfs_symlink_inode_t *) ospfs_inode(dentry->d_inode->i_ino);
-	// Exercise: Your code here.
+	ospfs_symlink_inode_t *oi = (ospfs_symlink_inode_t *) ospfs_inode(dentry->d_inode->i_ino);
+	
+	//Check for conditional symlink
+	char root[5]="root?";
+	int it = 0;
+	char* dest;
+	if(oi->oi_size > 5){
+		if(memcmp(root,oi->oi_symlink,5) == 0){
+			it = 5;
+			char* trueFile = kmalloc(oi->oi_size, GFP_ATOMIC);
+			char* falseFile = kmalloc(oi->oi_size, GFP_ATOMIC);
+			char* linkName = kmalloc(oi->oi_size, GFP_ATOMIC);
+			char c = oi->oi_symlink[it];
+			int copyIt = 0;
 
-	nd_set_link(nd, oi->oi_symlink);
+			//Copy True Condition
+			while(c != 0 && c!=':' && it < oi->oi_size){
+				trueFile[copyIt] = c;
+				copyIt++;
+				it++;
+				c = oi->oi_symlink[it];
+			}
+			trueFile[copyIt] = 0;
+
+			if(c == ':'){
+				//Copy False Condition
+				it++;
+				c = oi->oi_symlink[it];
+				copyIt = 0;
+				while(c != 0 && c!=' ' && it < oi->oi_size){
+					falseFile[copyIt] = c;
+					copyIt++;
+					it++;
+					c = oi->oi_symlink[it];
+				}
+				falseFile[copyIt] = 0;
+
+				if(c == ' '){
+					//Copy Link Name
+					it++;
+					c = oi->oi_symlink[it];
+					copyIt = 0;
+					while(c != 0 && it < oi->oi_size){
+						linkName[copyIt] = c;
+						copyIt++;
+						it++;
+						c = oi->oi_symlink[it];
+					}
+					linkName[copyIt] = 0;
+				}
+				else{
+					return NULL;
+				}
+			}
+			else{
+				return NULL;
+			}
+
+			//Check to see if it is root
+			if(current->uid == 0 ){
+				dest = trueFile;
+			}
+			else{
+				dest = falseFile;
+			}			
+		}
+		else{
+			dest = oi->oi_symlink;
+		}
+	}
+	else{
+		dest = oi->oi_symlink;
+	}
+
+	nd_set_link(nd, dest);
 	return (void *) 0;
 }
 
