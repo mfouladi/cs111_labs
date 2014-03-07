@@ -449,13 +449,13 @@ ospfs_dir_readdir(struct file *filp, void *dirent, filldir_t filldir)
 		 * the loop.  For now we do this all the time.
 		 *
 		 * EXERCISE: Your code here */
-		if(f_pos >= dir_oi->oi_size * OSPFS_DIRENTRY_SIZE){
+		if((f_pos-2) >= dir_oi->oi_size * OSPFS_DIRENTRY_SIZE){
 			r = 1;
 			break;
 		}
 
 		// Get a pointer to the next entry (od) in the directory.
-		ospfs_direntry_t* dirEntry = ospfs_inode_data(dir_oi, f_pos * OSPFS_DIRENTRY_SIZE);
+		ospfs_direntry_t* dirEntry = ospfs_inode_data(dir_oi, (f_pos-2) * OSPFS_DIRENTRY_SIZE);
 
 		 /* The file system interprets the contents of a
 		 * directory-file as a sequence of ospfs_direntry structures.
@@ -549,14 +549,14 @@ ospfs_unlink(struct inode *dirino, struct dentry *dentry)
 	}
 
 	od->od_ino = 0;
-	if(oi->oi_ftype == OSPFS_FTYPE_SYMLINK){
+	/*if(oi->oi_ftype == OSPFS_FTYPE_SYMLINK){
 		ospfs_symlink_inode_t *soi = (ospfs_symlink_inode_t*) oi;
 		soi->oi_nlink = 0;
 		memset(soi->oi_symlink, 0 , OSPFS_MAXSYMLINKLEN + 1);
 	}
-	else{
+	else{*/
 		oi->oi_nlink--;	
-	}
+	//}
 
 	return 0;
 }
@@ -1042,6 +1042,8 @@ ospfs_notify_change(struct dentry *dentry, struct iattr *attr)
 static ssize_t
 ospfs_read(struct file *filp, char __user *buffer, size_t count, loff_t *f_pos)
 {
+	printk("\ninside ospfs_read\n");
+
 	ospfs_inode_t *oi = ospfs_inode(filp->f_dentry->d_inode->i_ino);
 	int retval = 0;
 	size_t amount = 0;
@@ -1049,7 +1051,7 @@ ospfs_read(struct file *filp, char __user *buffer, size_t count, loff_t *f_pos)
 	// Make sure we don't read past the end of the file!
 	// Change 'count' so we never read past the end of the file.
 	if( count+(*f_pos) > oi->oi_size){
-		count = oi->oi_size;
+		count = oi->oi_size - (*f_pos);
 	}
 
 	// Copy the data to user block by block
@@ -1081,9 +1083,12 @@ ospfs_read(struct file *filp, char __user *buffer, size_t count, loff_t *f_pos)
 			n = remaining_data;	
 		}
 
+		printf("n = %d\n",n);
+
 		//Copy The remaining data to the buffer
 		if(copy_to_user(buffer, data, n) != 0){
-			return -EFAULT;
+			retval = -EFAULT; 
+			goto done;
 		}
 
 		//Increment by the amount copied over
@@ -1093,6 +1098,7 @@ ospfs_read(struct file *filp, char __user *buffer, size_t count, loff_t *f_pos)
 	}
 
     done:
+    printf("retval = %d\n", retval);
 	return (retval >= 0 ? amount : retval);
 }
 
