@@ -452,11 +452,15 @@ ospfs_dir_readdir(struct file *filp, void *dirent, filldir_t filldir)
 		 * the loop.  For now we do this all the time.
 		 *
 		 * EXERCISE: Your code here */
-		r = 1;		/* Fix me! */
-		break;		/* Fix me! */
+		if(f_pos >= dir_oi->oi_size * OSPFS_DIRENTRY_SIZE){
+			r = 1;
+			break;
+		}
 
-		/* Get a pointer to the next entry (od) in the directory.
-		 * The file system interprets the contents of a
+		// Get a pointer to the next entry (od) in the directory.
+		ospfs_direntry_t* dirEntry = ospfs_inode_data(dir_oi, f_pos * OSPFS_DIRENTRY_SIZE);
+
+		 /* The file system interprets the contents of a
 		 * directory-file as a sequence of ospfs_direntry structures.
 		 * You will find 'f_pos' and 'ospfs_inode_data' useful.
 		 *
@@ -465,17 +469,45 @@ ospfs_dir_readdir(struct file *filp, void *dirent, filldir_t filldir)
 		 * another directory, use 'ospfs_inode' to get the directory
 		 * entry's corresponding inode, and check out its 'oi_ftype'
 		 * member.
-		 *
 		 * Make sure you ignore blank directory entries!  (Which have
 		 * an inode number of 0.)
-		 *
-		 * If the current entry is successfully read (the call to
+		 */
+		if(dirEntry->od_ino == 0){
+			f_pos++;
+			continue;
+		}
+		//Get iNode for the entry
+		ospfs_inode_t *entry_oi = ospfs_inode(dirEntry->od_ino);
+		if (entry_oi == NULL){
+			f_pos++;
+			continue;
+		}
+
+		//Check the type: Regular, Directory, Symlink
+		if (entry_oi->oi_ftype == OSPFS_FTYPE_REG){
+			ok_so_far = filldir(dirent, dirEntry->od_name, strlen(dirEntry->od_name), f_pos, dirEntry->od_ino, DT_REG);
+		}
+		else if (entry_oi->oi_ftype == OSPFS_FTYPE_DIR)
+		{
+			ok_so_far = filldir(dirent, dirEntry->od_name, strlen(dirEntry->od_name), f_pos, dirEntry->od_ino, DT_DIR);
+		}
+		else if (entry_oi->oi_ftype == OSPFS_FTYPE_SYMLINK)
+		{
+			ok_so_far = filldir(dirent, dirEntry->od_name, strlen(dirEntry->od_name), f_pos, dirEntry->od_ino, DT_LNK);
+		}
+
+		 /* If the current entry is successfully read (the call to
 		 * filldir returns >= 0), or the current entry is skipped,
 		 * your function should advance f_pos by the proper amount to
 		 * advance to the next directory entry.
 		 */
-
-		/* EXERCISE: Your code here */
+		if (ok_so_far >= 0){
+			f_pos++;
+		}
+		else{
+			r = 1;
+			break;
+		}
 	}
 
 	// Save the file position and return!
@@ -856,7 +888,9 @@ ospfs_read(struct file *filp, char __user *buffer, size_t count, loff_t *f_pos)
 
 	// Make sure we don't read past the end of the file!
 	// Change 'count' so we never read past the end of the file.
-	/* EXERCISE: Your code here */
+	if( count+(*f_pos) > oi->oi_size){
+		count = oi->size;
+	}
 
 	// Copy the data to user block by block
 	while (amount < count && retval >= 0) {
@@ -876,10 +910,23 @@ ospfs_read(struct file *filp, char __user *buffer, size_t count, loff_t *f_pos)
 		// Copy data into user space. Return -EFAULT if unable to write
 		// into user space.
 		// Use variable 'n' to track number of bytes moved.
-		/* EXERCISE: Your code here */
-		retval = -EIO; // Replace these lines
-		goto done;
+		// Current position in file by block
+		uint file_offset = (*f_pos) % OSPFS_BLKSIZE;
+		uint remaining_data = count - amount;
 
+		//Find how much data is left to copy in block
+		if ( file_offset + remaining_data > OSPFS_BLKSIZE){
+			n = OSPFS_BLKSIZE - file_offset;	
+		}else{
+			n = remaining_data;	
+		}
+
+		//Copy The remaining data to the buffer
+		if(copy_to_user(buffer, data, n) != 0){
+			return -EFAULT;
+		}
+
+		//Increment by the amount copied over
 		buffer += n;
 		amount += n;
 		*f_pos += n;
@@ -1239,8 +1286,53 @@ ospfs_symlink(struct inode *dir, struct dentry *dentry, const char *symname)
 	ospfs_inode_t *dir_oi = ospfs_inode(dir->i_ino);
 	uint32_t entry_ino = 0;
 
-	/* EXERCISE: Your code here. */
-	return -EINVAL;
+	//Check if dst_dentry->d_name.len is too long, and return error ENAMETOOLONG
+	if(dentry->d_name.len > OSPFS_MAXNAMELEN)
+		return ENAMETOOLONG;
+	if(strlen(symname)> OSPFS_MAXNAMELEN)
+		return -ENAMETOOLONG;
+
+	//Check if file with dst_dentry->d_name.name exits in directory already and return error
+	if(find_direntry(dir_oi, dst_dentry->d_name.name, dst_dentry->d_name.len) == NULL)
+		return EEXIST;
+
+	//Find an empty directory entry
+	ospfs_direntry_t new_dir_entry = create_blank_direntry(dir_oi);
+	if (IS_ERR(new_dir_entry))
+		return PTR_ERR(new_dir_entry);
+
+	//Look for an open Inode Entry
+	uint32_t entry_ino = 1;
+	ospfs_symlink_inode * created_inode;
+	while(entry_ino < (ospfs_super->os_ninodes))
+	{
+		created_inode = (ospfs_symlink_inode*) ospfs_inode(entry_ino);
+
+		//if found, increment hardlink and break
+		if(created_inode && created_inode->oi_nlink == 0)
+		{
+			created_inode->oi_nlink++;
+			break;
+		}
+
+		//Otherwise continue checking	
+		entry_ino++;
+	}
+	//if checked all entries, then no free space left
+	if(entry_ino >= (ospfs_super->os_ninodes))
+		return ENOSPC;
+
+	//compose the directory
+	new_dir_entry->od_ino = entry_ino;
+	strncpy(new_dir_entry->od_name, dentry->d_name.name, dentry->d_name.len);
+	new_dir_entry->od_name[dentry->d_name.len] = 0;
+
+	//initialize symlink fields
+	created_inode->oi_size = strlen(symname);
+	created_inode->oi_nlink++;
+	created_inode->oi_ftype = OSPFS_FTYPE_SYMLINK;
+	strncpy(created_inode->oi_symlink, symname, created_inode->oi_size);
+	created_inode->oi_symlink[strlen(symname)] = 0;
 
 	/* Execute this code after your function has successfully created the
 	   file.  Set entry_ino to the created file's inode number before
