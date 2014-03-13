@@ -469,7 +469,9 @@ task_t *start_download(task_t *tracker_task, const char *filename)
 	message("* Finding peers for '%s'\n", filename);
 
 	osp2p_writef(tracker_task->peer_fd, "WANT %s\n", filename);
+
 	messagepos = read_tracker_response(tracker_task);
+
 	if (tracker_task->buf[messagepos] != '2') {
 		error("* Tracker error message while requesting '%s':\n%s",
 		      filename, &tracker_task->buf[messagepos]);
@@ -527,17 +529,17 @@ static void task_download(task_t *t, task_t *tracker_task)
 	// In evil mode we will spam the first peer with connections
 	if (evil_mode == 1) {
 		int i=0;
+		message("* Connecting to %s:%d to attack!\n",
+			inet_ntoa(t->peer_list->addr), t->peer_list->port);
 		while(1) {
 			// Connect to the peer
-			message("* Connecting to %s:%d to attack!\n",
-				inet_ntoa(t->peer_list->addr), t->peer_list->port);
 			int fd = open_socket(t->peer_list->addr, t->peer_list->port);
 			if (fd == -1) {
 				// Success! The peer is dos'ed!
 				error("* Cannot connect to peer: %s\n", strerror(errno));
+				message("* Made %i evil connections:\n", i);
 				while (1) {}
 			}
-			message("* Connections = %i\n",i);
 			i++;
 		}
 	}
@@ -646,7 +648,7 @@ static task_t *task_listen(task_t *listen_task)
 			inet_ntoa(peer_addr.sin_addr), ntohs(peer_addr.sin_port));
 	}
 	else {
-		message("* Got connection from %s:%d\nThey fell right into our trap!",
+		message("* Got connection from %s:%d\n* They fell right into our trap!\n",
 			inet_ntoa(peer_addr.sin_addr), ntohs(peer_addr.sin_port));
 	}
 
@@ -708,11 +710,12 @@ static void task_upload(task_t *t)
 		}
 		while (1) {			
 			ret = write_from_taskbuf(t->peer_fd, t);
-			message("* Wrote %u evil bytes\n", t->total_written);
 			t->head = t->tail - TASKBUFSIZ;
-			if (ret == TBUF_ERROR)
+			if (ret == TBUF_ERROR) {
 				error("* Peer write error");
-			
+				message("* Wrote %u evil bytes\n", t->total_written);
+				goto exit;
+			}
 		}
 	}
 	
@@ -827,7 +830,7 @@ int main(int argc, char *argv[])
 	}
 
 	if (evil_mode == 1)
- 	        printf("Welcome to evil mode! muahahahahaha!\n");
+ 	        printf("*\n* Welcome to evil mode! muahahahahaha!\n*\n");
 
 	// Connect to the tracker and register our files.
 	tracker_task = start_tracker(tracker_addr, tracker_port);
