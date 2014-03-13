@@ -649,7 +649,7 @@ static void task_upload(task_t *t)
 	}
 	t->head = t->tail = 0;
 
-	char* badCharFound = strpbrk (t->filename, "\\");
+	char* badCharFound = strpbrk (t->filename, "/");
 	if(badCharFound){
 		error("* Cannot open files outside of currrent directory", t->filename);
 		goto exit;
