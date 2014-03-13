@@ -636,6 +636,14 @@ static void task_upload(task_t *t)
 {
 	assert(t->type == TASK_UPLOAD);
 	// First, read the request from the peer.
+
+	//Timer Interrupt Setup
+    time_t now, then;
+    double curr_seconds;
+    //Limit Time to 1 minute
+    const double experiment_time_seconds = 10;
+    //Get the current time in seconds
+    time(&now);
 	while (1) {
 		int ret = read_to_taskbuf(t->peer_fd, t);
 		if (ret == TBUF_ERROR) {
@@ -644,6 +652,16 @@ static void task_upload(task_t *t)
 		} else if (ret == TBUF_END
 			   || (t->tail && t->buf[t->tail-1] == '\n'))
 			break;
+
+		//Timer Interrupts Setting and Checking
+        time(&then);
+        curr_seconds = difftime(then,now);
+
+        //Break after experiment_time_seconds number of seconds
+        if(curr_seconds >= (double)experiment_time_seconds ){
+			error("Connection to peer timed out");
+            break;
+        }
 	}
 
 	assert(t->head == 0);
