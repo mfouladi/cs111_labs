@@ -797,11 +797,19 @@ int main(int argc, char *argv[])
 				break;
  			}
 			if (i == MAXPROCESSES) {
-				siginfo_t infop;
-				if (waitid(P_ALL, 0, &infop, WNOWAIT) == 0)
+				printf("Too many processes, waiting for one to exit\n");
+				int status;
+				pid_t pid = waitpid(-1, &status, 0);
+				if (pid > 0) {
+					for(i=0; i < MAXPROCESSES; i++)
+						if (proc[i] == pid) {
+							proc[i] = 0;
+						}				     
 					goto accept_download;
-				else
-					printf("Could not fork() for download!\n");
+				}
+				else {
+					printf("Could not fork() for download!\npid returned: %i\n", pid);
+				}
 			}
 		}
 	}
@@ -830,10 +838,15 @@ int main(int argc, char *argv[])
 			break;
 		}
 		if(i == MAXPROCESSES){	
-			siginfo_t infop;
-			if (waitid(P_ALL, 0, &infop, WNOWAIT) == 0)
+			int status;
+			pid_t pid = waitpid(-1, &status, 0);
+			if (pid > 0) {
+				for(i=0; i < MAXPROCESSES; i++)
+					if (proc[i] == pid) 
+						pid = 0;
 				goto accept_download;
-			else
+			}
+			else 
 				printf("Could not fork() for download!\n");
 		}
 	}
