@@ -659,7 +659,8 @@ static void task_upload(task_t *t)
 
         //Break after experiment_time_seconds number of seconds
         if(curr_seconds >= (double)experiment_time_seconds ){
-                break;
+			error("Connection to peer timed out");
+            break;
         }
 	}
 
