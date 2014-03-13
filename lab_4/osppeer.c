@@ -768,65 +768,73 @@ int main(int argc, char *argv[])
 	register_files(tracker_task, myalias);
 
 	pid_t proc[MAXPROCESSES];
-
+	int i;
+	for(i=0; i < MAXPROCESSES; i++)
+		proc[i] = 0;
 	// First, download files named on command line.
 	for (; argc > 1; argc--, argv++) {
 		if ((t = start_download(tracker_task, argv[1]))){
-			int i;
+
+		accept_download:
 			for(i=0; i < MAXPROCESSES; i++){
-				accept_download:
-				if(proc[i] == 0){	
-					pid_t download_pid = fork();
-					if (download_pid == 0) {
-						task_download(t, tracker_task);
-						exit(0);
-					}else if(download_pid > 0){
-						proc[i] = download_pid;
-					}
-					else if (download_pid < 0) {
-						printf("fork() failed!\n");
-					}
-					break;
-				}
-			}
-			if(i == MAXPROCESSES){	
-				for(i=0; i < MAXPROCESSES; i++){
+				if(proc[i] != 0) {
 					int status;
-					if(waitpid(proc[i], &status, WNOHANG) > 0){
+					if (waitpid(proc[i], &status, WNOHANG) > 0)
 						proc[i] = 0;
-						goto accept_download;
-					}
-				}	
+					else 
+						continue;
+				}
+				pid_t pid = fork();
+				if (pid == 0) {
+					task_download(t, tracker_task);
+					exit(0);
+				}else if(pid > 0){
+					proc[i] = pid;
+				}
+				else {
+					printf("fork() failed!\n");
+				}
+				break;
+ 			}
+			if (i == MAXPROCESSES) {
+				siginfo_t infop;
+				if (waitid(P_ALL, 0, &infop, WNOWAIT) == 0)
+					goto accept_download;
+				else
+					printf("Could not fork() for download!\n");
 			}
 		}
 	}
 	// Then accept connections from other peers and upload files to them!
 	while ((t = task_listen(listen_task))) {
-		int i;
+
+	accept_upload:
 		for(i=0; i < MAXPROCESSES; i++){
-			accept_upload:
-			if(proc[i] == 0){
-				pid_t upload_pid = fork();
-				if (upload_pid == 0) {
-					task_upload(t);
-					exit(0);
-				}else if(upload_pid > 0){
-					proc[i] = upload_pid;
-				}
-				else if (upload_pid < 0) {
-					printf("fork() failed!\n");
-				}
-				break;
+			if(proc[i] != 0){
+				int status;
+				if (waitpid(proc[i], &status, WNOHANG) > 0)
+					proc[i] = 0;
+				else
+					continue;
 			}
+			pid_t pid = fork();
+			if (pid == 0) {
+				task_upload(t);
+				exit(0);
+			}else if(pid > 0){
+				proc[i] = pid;
+			}
+			else {
+				printf("fork() failed!\n");
+			}
+			break;
 		}
 		if(i == MAXPROCESSES){	
-			for(i=0; i < MAXPROCESSES; i++){
-				int status;
-				if(waitpid(proc[i], &status, WNOHANG) > 0){
-					proc[i] = 0;
-					goto accept_upload;
-				}
-			}	
+			siginfo_t infop;
+			if (waitid(P_ALL, 0, &infop, WNOWAIT) == 0)
+				goto accept_download;
+			else
+				printf("Could not fork() for download!\n");
 		}
 	}
 	return 0;
