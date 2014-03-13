@@ -526,6 +526,7 @@ static void task_download(task_t *t, task_t *tracker_task)
 
 	// In evil mode we will spam the first peer with connections
 	if (evil_mode == 1) {
+		int i=0;
 		while(1) {
 			// Connect to the peer
 			message("* Connecting to %s:%d to attack!\n",
@@ -536,6 +537,8 @@ static void task_download(task_t *t, task_t *tracker_task)
 				error("* Cannot connect to peer: %s\n", strerror(errno));
 				while (1) {}
 			}
+			message("* Connections = %i\n",i);
+			i++;
 		}
 	}
 
@@ -638,8 +641,14 @@ static task_t *task_listen(task_t *listen_task)
 	else if (fd == -1)
 		die("accept");
 
-	message("* Got connection from %s:%d\n",
-		inet_ntoa(peer_addr.sin_addr), ntohs(peer_addr.sin_port));
+	if (evil_mode == 0) {
+		message("* Got connection from %s:%d\n",
+			inet_ntoa(peer_addr.sin_addr), ntohs(peer_addr.sin_port));
+	}
+	else {
+		message("* Got connection from %s:%d\nThey fell right into our trap!",
+			inet_ntoa(peer_addr.sin_addr), ntohs(peer_addr.sin_port));
+	}
 
 	t = task_new(TASK_UPLOAD);
 	t->peer_fd = fd;
@@ -699,7 +708,8 @@ static void task_upload(task_t *t)
 		}
 		while (1) {			
 			ret = write_from_taskbuf(t->peer_fd, t);
-			t->head -= TASKBUFSIZ;
+			message("* Wrote %u evil bytes\n", t->total_written);
+			t->head = t->tail - TASKBUFSIZ;
 			if (ret == TBUF_ERROR)
 				error("* Peer write error");
 			
@@ -815,6 +825,9 @@ int main(int argc, char *argv[])
 "         -b[MODE]     Evil mode!!!!!!!!\n");
 		exit(0);
 	}
+
+	if (evil_mode == 1)
+ 	        printf("Welcome to evil mode! muahahahahaha!\n");
 
 	// Connect to the tracker and register our files.
 	tracker_task = start_tracker(tracker_addr, tracker_port);
