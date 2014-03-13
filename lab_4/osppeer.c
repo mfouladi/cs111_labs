@@ -649,6 +649,11 @@ static void task_upload(task_t *t)
 	}
 	t->head = t->tail = 0;
 
+	char* badCharFound = strpbrk (t->filename, "\\");
+	if(badCharFound){
+		error("* Cannot open files outside of currrent directory", t->filename);
+		goto exit;
+	}
 	t->disk_fd = open(t->filename, O_RDONLY);
 	if (t->disk_fd == -1) {
 		error("* Cannot open file %s", t->filename);
