@@ -40,6 +40,7 @@ static int listen_port;
 
 #define TASKBUFSIZ	4096	// Size of task_t::buf
 #define FILENAMESIZ	256	// Size of task_t::filename
+#define MAXFILESIZ 64*1024*1024 //Set Max File Size to 64 MB
 
 //MAX FORKS ALLOWED
 #define MAXPROCESSES 10
@@ -626,7 +627,12 @@ static void task_download(task_t *t, task_t *tracker_task)
 		} else if (ret == TBUF_END && t->head == t->tail)
 			/* End of file */
 			break;
-
+		//Stop Disk Attacks
+		if(t->total_written > MAXFILESIZ)
+		{
+			error("File is too big, may be an attack!\n");
+			goto try_again;
+		}
 		ret = write_from_taskbuf(t->disk_fd, t);
 		if (ret == TBUF_ERROR) {
 			error("* Disk write error");
