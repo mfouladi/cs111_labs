@@ -515,6 +515,8 @@ task_t *start_download(task_t *tracker_task, const char *filename)
 		error("* Error while allocating task");
 		goto exit;
 	}
+
+	//Prevent Buffer Overflow
 	if (strlen(filename) >= FILENAMESIZ) {
 		error("* File name too long!");
 		goto exit;	  
@@ -728,6 +730,12 @@ static void task_upload(task_t *t)
 	}
 	
 	assert(t->head == 0);
+	//Prevent buffer overflow
+	if(t->tail - 10 > FILENAMESIZ)
+	{
+		error("FILE NAME TOO LONG!\n");
+		goto exit;
+	}
 	if (osp2p_snscanf(t->buf, t->tail, "GET %s OSP2P\n", t->filename) < 0) {
 		error("* Odd request %.*s\n", t->tail, t->buf);
 		goto exit;

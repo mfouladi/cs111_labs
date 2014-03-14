@@ -29,8 +29,37 @@ Email: robertrileychang@gmail.com
 # EXERCISE 2A: What conditions did you find and fix that would have
 #    triggered a buffer overrun bug?  (~1-3 sentences each)
 
+	The download and upload filenames were not being checked before being put
+	into the t->filename array. This could cause a buffer overrun since strcpy 
+	in download does not check boundries. Also osp2p_snscanf in upload does not
+	check boundries. Therefore we added a check for file size to make sure it is
+	less than FILENAMESIZ. This is in start_download and task_upload.
+
 # EXERCISE 2B: What other robustness problems did you fix?  (~1-3 sentences
 #    each)
+
+	1) Uploading files not in current directory attack. I checked the name of the requested file
+	for any forward slashes and if there are any, I reject the request since it is trying to go
+	into a different directory.
+
+	2) Uploading very large or infinite file attack. In order to prevent an uploader
+	from sending a very large file that will overun the disk, we set a limit to
+	64 Megabytes. This is defined at the top of the file and check when downloading
+	in task_download.
+		
+	3) Unresponsive peers and connections. Since there is a limit to the number of connections that can be made, I
+	timeout inactive connections after a minute. This would free up file descriptors to take valid connections
+	and will be useful in a case where someone is trying to deny service to others.
+
+	4) Popular tracker bug. Since there is a limited size to the buf in struct task, it is not possible
+	to hold an infinite amount of peers. To fix this problem, I stop loading peers once the limit is reached.
+	That way, there is never an overflow and requests can still be processed.
+	
+	5) Use checksums to check file integrity. If a files checksums do not match, then download
+	from a different peer.
+
+	6) I added checks for null pointers throughout the code to make it more robust around mallocs,
+	reallocs, or functions that return pointers.
 
 # EXERCISE 3: Describe the attacks you implemented for "evil mode".  Why
 #    are they attacks?  (~3-10 sentences each)
