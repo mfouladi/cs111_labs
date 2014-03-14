@@ -24,7 +24,8 @@ Email: robertrileychang@gmail.com
 
 # EXERCISE 1: What method you used to make your peer download and upload
 #    files in parallel?  (~1-3 sentences)
-
+     
+     To implement parallel downloads and uploads I used fork to create a child process for each download and upload. The main process would first fork for each requested download and then wait for an upload request. After an upload request was received it would fork again to deal with the request.
 
 # EXERCISE 2A: What conditions did you find and fix that would have
 #    triggered a buffer overrun bug?  (~1-3 sentences each)
@@ -63,6 +64,17 @@ Email: robertrileychang@gmail.com
 
 # EXERCISE 3: Describe the attacks you implemented for "evil mode".  Why
 #    are they attacks?  (~3-10 sentences each)
+     	 When the evil peer uploads a file to another peer, it opens /dev/urandom and copies a random series of
+	 bytes into the buffer. After each write to the socket it will keep moving the pointer of the offset of the
+     	 buffer back to the beginning which will cause the upload to continue sending the same random data. Unless
+	 the peer has a check in place to prevent infinite files, it will keep downloading the never ending file
+	 from the evil peer. If successful, the other peer will end up with no more disk space and it will not
+	 be able to download any other files.
+
+	 When the evil peer downloads a file from another peer, it will enter a loop that sends as many connection
+	 requests as its file descriptor table can hold. These connections will produce no output and hold the
+	 connection until the victum closes them. Even if the victum has implemented a timeout the sheer volume of
+	 requests will make them unable to field any valid requets.
 
 # Extra credit problems
 #Extra credit problem: none
