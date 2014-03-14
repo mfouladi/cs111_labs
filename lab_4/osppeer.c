@@ -26,6 +26,8 @@
 
 int evil_mode;			// nonzero iff this peer should behave badly
 
+#define DEBUG_MODE 0
+
 static struct in_addr listen_addr;	// Define listening endpoint
 static int listen_port;
 
@@ -315,8 +317,39 @@ static size_t read_tracker_response(task_t *t)
 		int ret = read_to_taskbuf(t->peer_fd, t);
 		if (ret == TBUF_ERROR)
 			die("tracker read error");
-		else if (ret == TBUF_END)
-			die("tracker connection closed prematurely!\n");
+		else if (ret == TBUF_END){
+			unsigned int i=0;
+			int it = 0;
+			if(DEBUG_MODE) printf("tail value is %d\n",t->tail);
+			for(it=0; it < 2; it++){
+				for(i=t->tail; t->buf[i] != '\n' ; i--);
+				i--;
+				t->tail = i;
+			}
+			i++;
+			if(DEBUG_MODE) printf("i value is %d\n",i);
+			t->tail = i;
+			split_pos = i+1;
+			unsigned int j = 0;
+			unsigned int newLineCount = 0;
+			for(j=0; j< (t->tail);j++){
+				if(t->buf[j] == '\n')
+					newLineCount++;
+			}
+			if(DEBUG_MODE) printf("new line count = %d\n", newLineCount);
+
+			char finalStatement[] = "\n200 Number of peers: ";
+			strcpy(&(t->buf[t->tail]), finalStatement);
+			t->tail += strlen(finalStatement);
+			//good up to here
+			char num[20];
+			sprintf(num, "%i", newLineCount);
+			strcpy(&(t->buf[t->tail]), num);
+			t->tail += strlen(num);
+			if(DEBUG_MODE) printf("FINAL BUF = %s\n",t->buf);
+			return split_pos;
+			//die("tracker connection closed prematurely!\n");
+		}
 	}
 }
 
